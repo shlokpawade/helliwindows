@@ -79,11 +79,16 @@ import tkinter as tk
 
 def _show_edge_overlay(color: str, duration: int) -> None:
     """
-    Display a colourful border around the entire screen for *duration* ms.
+    Display a glowing border around the entire screen for *duration* ms.
 
     The window is borderless and fullscreen; only the thin coloured edges are
     visible – the centre is made transparent so the desktop stays usable.
     Works on Windows via the '-transparentcolor' attribute.
+
+    Visual improvements over a plain solid border:
+    - Rounded corners drawn with arcs.
+    - Inner glow: multiple concentric bands that fade as they move into the
+      screen, simulating a soft light emission from the edge.
     """
     root = tk.Tk()
     root.overrideredirect(True)          # no title-bar / decorations
@@ -103,19 +108,82 @@ def _show_edge_overlay(color: str, duration: int) -> None:
         # Non-Windows platforms may not support this; fall back gracefully.
         pass
 
-    border = 10  # edge thickness in pixels
-
     canvas = tk.Canvas(
         root, width=sw, height=sh,
         bg=_TRANSPARENT, highlightthickness=0,
     )
     canvas.place(x=0, y=0)
 
-    # Draw four edge rectangles in the chosen colour
-    canvas.create_rectangle(0,          0,          sw, border,    fill=color, outline="")
-    canvas.create_rectangle(0,          sh - border, sw, sh,        fill=color, outline="")
-    canvas.create_rectangle(0,          0,          border, sh,     fill=color, outline="")
-    canvas.create_rectangle(sw - border, 0,          sw, sh,        fill=color, outline="")
+    # Parse the base colour into RGB components.
+    c = color.lstrip("#")
+    r0, g0, b0 = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+
+    corner_r = 22  # radius for rounded corners (pixels)
+    _MIN_CORNER_R = 4   # minimum corner radius to keep arcs visible
+    _MIN_RGB = 2        # minimum RGB component value to avoid the transparent bg colour
+
+    def _safe_hex(r: float, g: float, b: float) -> str:
+        """Clamp and format an RGB triple as a hex colour string.
+
+        Avoids the reserved transparent background colour.
+        """
+        ri = max(_MIN_RGB, min(255, int(r)))
+        gi = max(_MIN_RGB, min(255, int(g)))
+        bi = max(_MIN_RGB, min(255, int(b)))
+        h = f"#{ri:02x}{gi:02x}{bi:02x}"
+        return h if h != _TRANSPARENT else "#020202"
+
+    def _draw_rounded_border(inset: int, width: int, fill: str) -> None:
+        """Draw one rounded-rectangle border band at *inset* pixels from the
+        screen edge, using *width* as the band thickness and *fill* as colour.
+
+        The border is composed of four straight segments (top/bottom/left/right)
+        connected by quarter-circle arcs at each corner.
+        """
+        x0, y0 = inset, inset
+        x1, y1 = sw - inset, sh - inset
+        cr = max(_MIN_CORNER_R, corner_r - inset // 2)   # corner radius shrinks as inset grows
+        arc_d = cr * 2
+
+        # Straight segments (skip the corner areas so arcs can close them)
+        canvas.create_rectangle(
+            x0 + cr, y0,         x1 - cr, y0 + width, fill=fill, outline="")  # top
+        canvas.create_rectangle(
+            x0 + cr, y1 - width, x1 - cr, y1,         fill=fill, outline="")  # bottom
+        canvas.create_rectangle(
+            x0,      y0 + cr,    x0 + width, y1 - cr, fill=fill, outline="")  # left
+        canvas.create_rectangle(
+            x1 - width, y0 + cr, x1, y1 - cr,         fill=fill, outline="")  # right
+
+        # Quarter-circle arcs at each corner (ARC style = outline only)
+        canvas.create_arc(
+            x0, y0, x0 + arc_d, y0 + arc_d,
+            start=90, extent=90, outline=fill, width=width, style=tk.ARC)   # top-left
+        canvas.create_arc(
+            x1 - arc_d, y0, x1, y0 + arc_d,
+            start=0, extent=90, outline=fill, width=width, style=tk.ARC)    # top-right
+        canvas.create_arc(
+            x1 - arc_d, y1 - arc_d, x1, y1,
+            start=270, extent=90, outline=fill, width=width, style=tk.ARC)  # bottom-right
+        canvas.create_arc(
+            x0, y1 - arc_d, x0 + arc_d, y1,
+            start=180, extent=90, outline=fill, width=width, style=tk.ARC)  # bottom-left
+
+    # Glow layers drawn from the faintest (most inward) to the brightest (at
+    # the screen edge).  Each entry: (inset_px, band_width_px, colour_alpha).
+    # Later draws sit on top of earlier ones, so the core line is always on top.
+    _GLOW_LAYERS: list[tuple[int, int, float]] = [
+        (18, 7, 0.06),   # outermost glow – very faint, wide band
+        (13, 6, 0.14),
+        (9,  5, 0.28),
+        (6,  4, 0.50),
+        (3,  3, 0.75),
+        (1,  3, 1.00),   # core bright line at the screen edge
+    ]
+
+    for inset, width, alpha in _GLOW_LAYERS:
+        fill = _safe_hex(r0 * alpha, g0 * alpha, b0 * alpha)
+        _draw_rounded_border(inset, width, fill)
 
     root.after(duration, root.destroy)
     root.mainloop()
