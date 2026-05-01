@@ -15,7 +15,54 @@
     "excel": "excel.exe",
     "powerpoint": "powerpnt.exe"
   },
-  "routines": {},
+  "routines": {
+    "study": [
+      {
+        "action": "open_app",
+        "args": {
+          "app": "vs code"
+        }
+      },
+      {
+        "action": "set_volume",
+        "args": {
+          "value": 20
+        }
+      }
+    ],
+    "coding": [
+      {
+        "action": "open_app",
+        "args": {
+          "app": "vs code"
+        }
+      },
+      {
+        "action": "open_app",
+        "args": {
+          "app": "chrome"
+        }
+      },
+      {
+        "action": "set_volume",
+        "args": {
+          "value": 30
+        }
+      }
+    ],
+    "focus": [
+      {
+        "action": "mute",
+        "args": {}
+      },
+      {
+        "action": "open_app",
+        "args": {
+          "app": "vs code"
+        }
+      }
+    ]
+  },
   "history": [
     {
       "ts": "2026-05-01T08:21:56Z",
