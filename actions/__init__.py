@@ -8,17 +8,20 @@ ready to pass to Planner.register_actions().
 from actions.dev import DevActions
 from actions.files import FileActions
 from actions.local import LocalActions
+from actions.modes import ModeActions
 from actions.system import SystemActions
 from actions.web import WebActions
 
 
-def build_action_registry(memory) -> dict:
+def build_action_registry(memory, listener=None) -> dict:
     """Return a flat dict of {action_name: callable} for all modules."""
     sys_act = SystemActions(memory)
     file_act = FileActions(memory)
     web_act = WebActions()
     dev_act = DevActions()
     local_act = LocalActions()
+    mode_act = ModeActions(listener=listener, sys_act=sys_act,
+                           web_act=web_act, dev_act=dev_act)
 
     return {
         # System
@@ -68,18 +71,12 @@ def build_action_registry(memory) -> dict:
         "open_vscode_project": dev_act.open_vscode_project,
 
         # Meta
-        "activate_mode":     _activate_mode,
-        "run_routine":       _activate_mode,
+        "activate_mode":     mode_act.activate_mode,
+        "run_routine":       mode_act.activate_mode,
         "help":              _help,
         "unknown":           _unknown,
         "stop":              _stop,
     }
-
-
-def _activate_mode(mode: str = "", **_) -> None:
-    """Spoken feedback when a mode/routine has no defined steps."""
-    from utils import speak
-    speak(f"No routine defined for {mode} mode yet. Add steps to memory.json.")
 
 
 def _help(**_) -> None:

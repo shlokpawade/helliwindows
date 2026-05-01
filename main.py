@@ -31,7 +31,7 @@ class JarvisAssistant:
         self._listener = Listener()
         self._brain = Brain(self._memory)
         self._planner = Planner(self._memory)
-        self._planner.register_actions(build_action_registry(self._memory))
+        self._planner.register_actions(build_action_registry(self._memory, self._listener))
 
         self._wake_event = threading.Event()
         self._detector = WakeWordDetector(on_wake=self._wake_event.set)
