@@ -66,16 +66,21 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bopen\s+it\b"), "open_last_app", None),
     (re.compile(r"\blaunch\s+it\b"), "open_last_app", None),
     (re.compile(r"\bstart\s+it\b"), "open_last_app", None),
-    # URL must be checked before generic open_app
-    (re.compile(r"\bopen\s+(?P<query>https?://\S+)"), "open_url", _query_arg),
+    # URL must be checked before generic open_app.
+    # Use .+ so the full URL (including query string) is captured; the
+    # segment has already been split on " and " / "," by parse_multi, so
+    # there are no other tokens after the URL in a typical voice command.
+    (re.compile(r"\bopen\s+(?P<query>https?://.+)"), "open_url", _query_arg),
     # File / folder must be checked before generic open_app
     (re.compile(r"\bopen\s+(?:file|folder)\s+(?P<path>.+)"), "open_file", _file_arg),
     # VS Code project must be checked before generic open_app
     (re.compile(r"\bopen\s+project\s+(?P<path>.+)"), "open_vscode_project", _file_arg),
-    # Generic app launcher (catch-all, must be last in this group)
-    (re.compile(r"\bopen\s+(?P<app>.+)"), "open_app", _app_arg),
-    (re.compile(r"\blaunch\s+(?P<app>.+)"), "open_app", _app_arg),
-    (re.compile(r"\bstart\s+(?P<app>.+)"), "open_app", _app_arg),
+    # Generic app launcher (catch-all, must be last in this group).
+    # Negative lookaheads for "it" prevent shadowing the open_last_app rules
+    # above — belt-and-suspenders since the specific rules are ordered first.
+    (re.compile(r"\bopen\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
+    (re.compile(r"\blaunch\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
+    (re.compile(r"\bstart\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
     (re.compile(r"\bclose\s+(?P<app>.+)"), "close_app", _app_arg),
 
     # ---- Volume ----
