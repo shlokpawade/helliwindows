@@ -59,9 +59,9 @@ WAKE_SENSITIVITY  = 0.0            # Vosk keyword threshold (0–1)
 # Brain / Intent
 # ---------------------------------------------------------------------------
 USE_LOCAL_LLM     = os.getenv("USE_LOCAL_LLM", "true").lower() == "true"
-OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "llama3:latest")
+OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "phi3:mini")
 OLLAMA_URL        = os.getenv("OLLAMA_URL", "http://localhost:11434/v1/chat/completions")
-OLLAMA_TIMEOUT    = 120            # seconds; allow slower local generation
+OLLAMA_TIMEOUT    = 30             # seconds; reduced for snappier responses
 
 # ---------------------------------------------------------------------------
 # Safety
