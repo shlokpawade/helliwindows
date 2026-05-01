@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from config import MEMORY_FILE, MAX_MEMORY_ENTRIES
-from utils import logger, now_iso
+from utils import logger, log_event, now_iso
 
 
 class Memory:
@@ -77,6 +77,8 @@ class Memory:
                 self._data["history"] = history[-MAX_MEMORY_ENTRIES:]
             self._data["last_action"] = intent
             self._save()
+        # Also persist to the structured JSON event log
+        log_event("command", {"text": text, "intent": intent, "success": success})
 
     def resolve_app(self, name: str) -> str | None:
         """Return the executable for *name* from app_mappings, or None."""

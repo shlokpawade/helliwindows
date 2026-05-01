@@ -16,14 +16,18 @@
         "powerpoint": "powerpnt.exe"
     },
     "routines": {
-        "study mode": [
+        "study": [
             {"action": "open_app", "args": {"app": "vs code"}},
-            {"action": "system_control", "args": {"command": "set_volume", "value": 20}}
+            {"action": "set_volume", "args": {"value": 20}}
         ],
-        "coding mode": [
+        "coding": [
             {"action": "open_app", "args": {"app": "vs code"}},
             {"action": "open_app", "args": {"app": "chrome"}},
-            {"action": "system_control", "args": {"command": "set_volume", "value": 30}}
+            {"action": "set_volume", "args": {"value": 30}}
+        ],
+        "focus": [
+            {"action": "mute", "args": {}},
+            {"action": "open_app", "args": {"app": "vs code"}}
         ]
     },
     "history": [],

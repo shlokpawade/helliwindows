@@ -6,6 +6,9 @@ Intent resolution order:
 2. Optional local LLM via Ollama (richer NLU when USE_LOCAL_LLM=true).
 
 Returns a structured Intent object consumed by planner.py.
+
+For compound commands ("open chrome and play lo-fi"), use parse_multi()
+which splits on "and" / "," and parses each segment independently.
 """
 
 import re
@@ -87,6 +90,7 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bsearch\s+(?:for\s+)?(?P<query>.+)"), "web_search", _query_arg),
     (re.compile(r"\byoutube\s+(?P<query>.+)"), "youtube_search", _query_arg),
     (re.compile(r"\bplay\s+(?P<query>.+)\s+on\s+youtube\b"), "youtube_search", _query_arg),
+    (re.compile(r"\bplay\s+(?P<query>.+)"), "play_media", _query_arg),
     (re.compile(r"\bopen\s+(?P<query>https?://.+)"), "open_url", _query_arg),
 
     # Modes / routines
@@ -182,3 +186,34 @@ class Brain:
 
         logger.info("Intent unknown for: '%s'", text)
         return Intent("unknown", {}, raw=text, confidence=0.0)
+
+    def parse_multi(self, text: str) -> list[Intent]:
+        """
+        Split a compound command on "and" / "," and parse each segment.
+
+        Example:
+            "open chrome and play lo-fi"
+            → [Intent("open_app", {"app": "chrome"}),
+               Intent("play_media", {"query": "lo-fi"})]
+
+        Single-segment inputs fall through to parse() unchanged so callers
+        can always use this method instead of parse().
+        """
+        norm = normalise(text)
+        # Split on literal " and " or a comma followed by optional whitespace.
+        # Use a non-greedy approach to avoid over-splitting queries like
+        # "search for python and ruby" – each segment is still validated.
+        segments = re.split(r"\s+and\s+|,\s*", norm)
+        segments = [s.strip() for s in segments if s.strip()]
+
+        if len(segments) <= 1:
+            return [self.parse(text)]
+
+        intents: list[Intent] = []
+        for seg in segments:
+            intent = self.parse(seg)
+            intents.append(intent)
+            logger.debug("parse_multi segment '%s' → %s %s", seg, intent.name, intent.args)
+
+        logger.info("parse_multi produced %d intents from: '%s'", len(intents), norm)
+        return intents

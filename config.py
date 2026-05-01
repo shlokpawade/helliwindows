@@ -6,12 +6,21 @@ All tuneable constants, paths, and flags live here.
 import os
 from pathlib import Path
 
+# Load .env file if present (python-dotenv is a required dependency;
+# the ImportError catch is kept for graceful degradation in stripped installs)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # fall back to environment variables already set in the shell
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent.resolve()
 MEMORY_FILE = BASE_DIR / "memory.json"
-LOG_FILE = BASE_DIR / "jarvis.log"
+LOG_FILE    = BASE_DIR / "jarvis.log"
+LOGS_FILE   = BASE_DIR / "logs.json"  # structured JSON event log
 
 # Vosk model directory (download from https://alphacephei.com/vosk/models)
 # e.g. BASE_DIR / "models" / "vosk-model-small-en-us-0.15"

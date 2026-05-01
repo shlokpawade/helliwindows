@@ -2,6 +2,7 @@
 utils.py – Shared helpers: logging, text normalisation, TTS, confirmation.
 """
 
+import json
 import logging
 import re
 import subprocess
@@ -10,7 +11,7 @@ from datetime import datetime
 
 import pyttsx3
 
-from config import LOG_FILE, CONFIRM_DANGEROUS, DANGEROUS_ACTIONS
+from config import LOG_FILE, LOGS_FILE, CONFIRM_DANGEROUS, DANGEROUS_ACTIONS
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -118,3 +119,21 @@ def run_command(cmd: list[str], capture: bool = False) -> subprocess.CompletedPr
 # ---------------------------------------------------------------------------
 def now_iso() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+# ---------------------------------------------------------------------------
+# JSON structured event log (logs.json)
+# ---------------------------------------------------------------------------
+def log_event(event_type: str, data: dict) -> None:
+    """
+    Append a structured JSON event to logs.json.
+
+    Each entry is written as a single line (NDJSON) to avoid loading the
+    entire file into memory on every write.
+    """
+    entry = {"ts": now_iso(), "event": event_type, **data}
+    try:
+        with open(LOGS_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError as exc:
+        logger.warning("Could not write to logs.json: %s", exc)
