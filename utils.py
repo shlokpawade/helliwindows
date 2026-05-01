@@ -119,15 +119,17 @@ def _show_edge_overlay(color: str, duration: int) -> None:
     r0, g0, b0 = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
 
     corner_r = 22  # radius for rounded corners (pixels)
+    _MIN_CORNER_R = 4   # minimum corner radius to keep arcs visible
+    _MIN_RGB = 2        # minimum RGB component value to avoid the transparent bg colour
 
     def _safe_hex(r: float, g: float, b: float) -> str:
         """Clamp and format an RGB triple as a hex colour string.
 
         Avoids the reserved transparent background colour.
         """
-        ri = max(2, min(255, int(r)))
-        gi = max(2, min(255, int(g)))
-        bi = max(2, min(255, int(b)))
+        ri = max(_MIN_RGB, min(255, int(r)))
+        gi = max(_MIN_RGB, min(255, int(g)))
+        bi = max(_MIN_RGB, min(255, int(b)))
         h = f"#{ri:02x}{gi:02x}{bi:02x}"
         return h if h != _TRANSPARENT else "#020202"
 
@@ -140,7 +142,7 @@ def _show_edge_overlay(color: str, duration: int) -> None:
         """
         x0, y0 = inset, inset
         x1, y1 = sw - inset, sh - inset
-        cr = max(corner_r - inset // 2, 4)   # corner radius shrinks as inset grows
+        cr = max(_MIN_CORNER_R, corner_r - inset // 2)   # corner radius shrinks as inset grows
         arc_d = cr * 2
 
         # Straight segments (skip the corner areas so arcs can close them)

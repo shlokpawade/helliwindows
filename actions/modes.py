@@ -23,6 +23,13 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from actions.dev import DevActions
+    from actions.system import SystemActions
+    from actions.web import WebActions
+    from listener import Listener
 
 from utils import logger, normalise, speak
 
@@ -81,7 +88,13 @@ class ModeActions:
     (for volume), WebActions (for YouTube), and DevActions (for VS Code).
     """
 
-    def __init__(self, listener, sys_act, web_act, dev_act) -> None:
+    def __init__(
+        self,
+        listener: Listener | None,
+        sys_act: SystemActions,
+        web_act: WebActions,
+        dev_act: DevActions,
+    ) -> None:
         self._listener = listener
         self._sys = sys_act
         self._web = web_act
