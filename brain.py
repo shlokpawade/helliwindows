@@ -61,8 +61,10 @@ def _git_arg(m: re.Match) -> dict:
 # ---------------------------------------------------------------------------
 _RULES: list[tuple[re.Pattern, str, Any]] = [
     # ---- App control (specific variants first, generic last) ----
-    # "open it" is also handled by the context pre-check in Brain.parse(),
-    # but keeping the rule here catches phrasing not caught by exact match.
+    # "open it" / "launch it" / "start it" → reopen the last used app.
+    # These rules are also covered by an exact-string pre-check inside
+    # Brain.parse() (which runs before rule matching), but the rules below
+    # serve as a fallback for any normalised variant the pre-check misses.
     (re.compile(r"\bopen\s+it\b"), "open_last_app", None),
     (re.compile(r"\blaunch\s+it\b"), "open_last_app", None),
     (re.compile(r"\bstart\s+it\b"), "open_last_app", None),
@@ -77,7 +79,7 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bopen\s+project\s+(?P<path>.+)"), "open_vscode_project", _file_arg),
     # Generic app launcher (catch-all, must be last in this group).
     # Negative lookaheads for "it" prevent shadowing the open_last_app rules
-    # above — belt-and-suspenders since the specific rules are ordered first.
+    # above — an additional safeguard since the specific rules are ordered first.
     (re.compile(r"\bopen\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
     (re.compile(r"\blaunch\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
     (re.compile(r"\bstart\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
