@@ -34,11 +34,16 @@ def _find_best_vosk_model() -> str:
     if models_dir.exists():
         candidates = [p for p in models_dir.iterdir() if p.is_dir()]
         if candidates:
-            # Prefer a larger model if multiple are present.
-            candidates.sort(key=lambda p: p.name)
+            # Prefer full-size models over small/tiny ones; break ties by name.
+            def _model_key(p: Path) -> tuple:  # noqa: F821
+                name = p.name.lower()
+                is_full = int("small" not in name and "tiny" not in name)
+                return (is_full, name)
+
+            candidates.sort(key=_model_key)
             return str(candidates[-1])
 
-    return str(BASE_DIR / "models" / "vosk-model-small-en-us-0.15")
+    return str(BASE_DIR / "models" / "vosk-model-en-us-0.22")
 
 VOSK_MODEL_PATH = _find_best_vosk_model()
 
@@ -79,3 +84,13 @@ VSCODE_PATH       = os.getenv("VSCODE_PATH", "code")  # must be on PATH
 # Memory
 # ---------------------------------------------------------------------------
 MAX_MEMORY_ENTRIES = 200           # cap history list length
+
+# ---------------------------------------------------------------------------
+# STT tuning
+# ---------------------------------------------------------------------------
+# Multiply the raw microphone signal before feeding it to Vosk.
+# Increase if your mic is too quiet (try 2.0–4.0); set to 1.0 to disable.
+STT_AUDIO_GAIN        = float(os.getenv("STT_AUDIO_GAIN", "2.0"))
+# RMS energy below this level is treated as silence.
+# Lower the value if the detector cuts off too early; raise it in noisy rooms.
+STT_SILENCE_THRESHOLD = int(os.getenv("STT_SILENCE_THRESHOLD", "300"))
