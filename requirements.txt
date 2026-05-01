@@ -1,6 +1,10 @@
 # Core audio & speech
 vosk==0.3.45
 sounddevice==0.4.6
+numpy>=1.24
+
+# Command speech-to-text (Whisper)
+openai-whisper>=20231117
 
 # Text-to-speech (offline)
 pyttsx3==2.90
