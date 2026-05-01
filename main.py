@@ -20,7 +20,7 @@ from config import WAKE_WORD
 from listener import Listener
 from memory import Memory
 from planner import Planner
-from utils import logger, speak
+from utils import logger, speak, show_wake_animation, show_listening_animation
 from wake import WakeWordDetector
 
 
@@ -55,6 +55,10 @@ class JarvisAssistant:
 
     def _handle_turn(self) -> None:
         """One full listen → understand → act cycle."""
+        show_wake_animation()
+        speak("how can i help you today")
+        show_listening_animation()
+        logger.info("listening")
         text = self._listener.listen()
         if not text:
             speak("I didn't catch that. Please try again.")

@@ -24,28 +24,44 @@ LOGS_FILE   = BASE_DIR / "logs.json"  # structured JSON event log
 
 # Vosk model directory (download from https://alphacephei.com/vosk/models)
 # e.g. BASE_DIR / "models" / "vosk-model-small-en-us-0.15"
-VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", str(BASE_DIR / "models" / "vosk-model-small-en-us-0.15"))
+
+def _find_best_vosk_model() -> str:
+    env_path = os.getenv("VOSK_MODEL_PATH")
+    if env_path:
+        return env_path
+
+    models_dir = BASE_DIR / "models"
+    if models_dir.exists():
+        candidates = [p for p in models_dir.iterdir() if p.is_dir()]
+        if candidates:
+            # Prefer a larger model if multiple are present.
+            candidates.sort(key=lambda p: p.name)
+            return str(candidates[-1])
+
+    return str(BASE_DIR / "models" / "vosk-model-small-en-us-0.15")
+
+VOSK_MODEL_PATH = _find_best_vosk_model()
 
 # ---------------------------------------------------------------------------
 # Audio
 # ---------------------------------------------------------------------------
 AUDIO_SAMPLE_RATE = 16000          # Hz – required by Vosk
-AUDIO_BLOCK_SIZE  = 8000           # frames per read block
-MIC_DEVICE_INDEX  = None           # None → system default
+AUDIO_BLOCK_SIZE  = 4000           # smaller blocks improve STT responsiveness
+MIC_DEVICE_INDEX  = 1             # None → system default
 
 # ---------------------------------------------------------------------------
 # Wake word
 # ---------------------------------------------------------------------------
 WAKE_WORD         = "hey windows"
-WAKE_SENSITIVITY  = 0.6            # Vosk keyword threshold (0–1)
+WAKE_SENSITIVITY  = 0.0            # Vosk keyword threshold (0–1)
 
 # ---------------------------------------------------------------------------
 # Brain / Intent
 # ---------------------------------------------------------------------------
-USE_LOCAL_LLM     = os.getenv("USE_LOCAL_LLM", "false").lower() == "true"
-OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "mistral")
-OLLAMA_URL        = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_TIMEOUT    = 30             # seconds
+USE_LOCAL_LLM     = os.getenv("USE_LOCAL_LLM", "true").lower() == "true"
+OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "llama3:latest")
+OLLAMA_URL        = os.getenv("OLLAMA_URL", "http://localhost:11434/v1/chat/completions")
+OLLAMA_TIMEOUT    = 120            # seconds; allow slower local generation
 
 # ---------------------------------------------------------------------------
 # Safety

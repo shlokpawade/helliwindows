@@ -181,10 +181,11 @@ copy .env.example .env
 ### 6 – (Optional) Enable Ollama LLM fallback
 ```bash
 # Install Ollama from https://ollama.ai/
-ollama pull mistral          # or llama3, phi3, etc.
+ollama pull llama3:latest    # or mistral, phi3, etc.
 # Then in .env set:
 #   USE_LOCAL_LLM=true
-#   OLLAMA_MODEL=mistral
+#   OLLAMA_MODEL=llama3:latest
+#   OLLAMA_URL=http://localhost:11434/v1/chat/completions
 ```
 
 ### 7 – (Optional) Enable developer mode
@@ -280,8 +281,8 @@ All settings are in `config.py` and can be overridden via `.env`:
 |---|---|---|
 | `VOSK_MODEL_PATH` | `models/vosk-model-small-en-us-0.15` | Path to Vosk model dir |
 | `USE_LOCAL_LLM` | `false` | Enable Ollama LLM fallback |
-| `OLLAMA_MODEL` | `mistral` | Ollama model name |
-| `OLLAMA_URL` | `http://localhost:11434/api/generate` | Ollama endpoint |
+| `OLLAMA_MODEL` | `llama3:latest` | Ollama model name |
+| `OLLAMA_URL` | `http://localhost:11434/v1/chat/completions` | Ollama endpoint |
 | `DEVELOPER_MODE` | `false` | Unlock dev-mode actions |
 | `VSCODE_PATH` | `code` | VS Code CLI path |
 

@@ -35,6 +35,8 @@ def build_action_registry(memory) -> dict:
         "screenshot":        sys_act.screenshot,
         "get_time":          sys_act.get_time,
         "get_date":          sys_act.get_date,
+        "send_whatsapp_message": sys_act.send_whatsapp_message,
+        "chat_response":     sys_act.chat_response,
 
         # Files
         "open_file":         file_act.open_file,

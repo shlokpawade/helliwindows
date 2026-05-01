@@ -1,36 +1,436 @@
 {
-    "app_mappings": {
-        "notepad": "notepad.exe",
-        "calculator": "calc.exe",
-        "paint": "mspaint.exe",
-        "chrome": "chrome.exe",
-        "firefox": "firefox.exe",
-        "explorer": "explorer.exe",
-        "task manager": "taskmgr.exe",
-        "vs code": "code",
-        "visual studio code": "code",
-        "spotify": "spotify.exe",
-        "vlc": "vlc.exe",
-        "word": "winword.exe",
-        "excel": "excel.exe",
-        "powerpoint": "powerpnt.exe"
+  "app_mappings": {
+    "notepad": "notepad.exe",
+    "calculator": "calc.exe",
+    "paint": "mspaint.exe",
+    "chrome": "chrome.exe",
+    "firefox": "firefox.exe",
+    "explorer": "explorer.exe",
+    "task manager": "taskmgr.exe",
+    "vs code": "code",
+    "visual studio code": "code",
+    "spotify": "spotify.exe",
+    "vlc": "vlc.exe",
+    "word": "winword.exe",
+    "excel": "excel.exe",
+    "powerpoint": "powerpnt.exe"
+  },
+  "routines": {
+    "study": [
+      {
+        "action": "open_app",
+        "args": {
+          "app": "vs code"
+        }
+      },
+      {
+        "action": "set_volume",
+        "args": {
+          "value": 20
+        }
+      }
+    ],
+    "coding": [
+      {
+        "action": "open_app",
+        "args": {
+          "app": "vs code"
+        }
+      },
+      {
+        "action": "open_app",
+        "args": {
+          "app": "chrome"
+        }
+      },
+      {
+        "action": "set_volume",
+        "args": {
+          "value": 30
+        }
+      }
+    ],
+    "focus": [
+      {
+        "action": "mute",
+        "args": {}
+      },
+      {
+        "action": "open_app",
+        "args": {
+          "app": "vs code"
+        }
+      }
+    ]
+  },
+  "history": [
+    {
+      "ts": "2026-05-01T08:21:56Z",
+      "text": "both are brave oh but",
+      "intent": "unknown",
+      "success": true
     },
-    "routines": {
-        "study": [
-            {"action": "open_app", "args": {"app": "vs code"}},
-            {"action": "set_volume", "args": {"value": 20}}
-        ],
-        "coding": [
-            {"action": "open_app", "args": {"app": "vs code"}},
-            {"action": "open_app", "args": {"app": "chrome"}},
-            {"action": "set_volume", "args": {"value": 30}}
-        ],
-        "focus": [
-            {"action": "mute", "args": {}},
-            {"action": "open_app", "args": {"app": "vs code"}}
-        ]
+    {
+      "ts": "2026-05-01T08:22:16Z",
+      "text": "open brave",
+      "intent": "open_app",
+      "success": true
     },
-    "history": [],
-    "last_action": null,
-    "last_app_opened": null
+    {
+      "ts": "2026-05-01T08:27:59Z",
+      "text": "open your",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:28:11Z",
+      "text": "reno guy beads",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:28:36Z",
+      "text": "play songs on youtube",
+      "intent": "youtube_search",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:29:12Z",
+      "text": "cleopatra on youtube",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:29:30Z",
+      "text": "open your job and search for b m t o c",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:29:30Z",
+      "text": "open your job and search for b m t o c",
+      "intent": "web_search",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:29:54Z",
+      "text": "though",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:30:07Z",
+      "text": "or when you go",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:30:27Z",
+      "text": "open braves",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:30:44Z",
+      "text": "oakland rails",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:31:02Z",
+      "text": "open road",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:31:21Z",
+      "text": "open grown",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:31:38Z",
+      "text": "oh been grown",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:31:53Z",
+      "text": "open grown",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:32:04Z",
+      "text": "when brave",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:37:34Z",
+      "text": "open brave",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:37:48Z",
+      "text": "search",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:38:00Z",
+      "text": "this database on here too",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:38:09Z",
+      "text": "this",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:38:26Z",
+      "text": "hey songs on your go",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:38:38Z",
+      "text": "the songs are you too",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:38:51Z",
+      "text": "open bro",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:39:03Z",
+      "text": "oh been grown",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T08:47:06Z",
+      "text": "although live",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:00:19Z",
+      "text": "open grave",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:00:30Z",
+      "text": "those",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:00:39Z",
+      "text": "search",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:00:50Z",
+      "text": "which i put on grab",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:01:01Z",
+      "text": "play songs",
+      "intent": "play_media",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:01:43Z",
+      "text": "search a man on braves",
+      "intent": "web_search",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:03:09Z",
+      "text": "degrees right less",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:03:22Z",
+      "text": "he agrees right nice",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:03:49Z",
+      "text": "what's the time",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:12:00Z",
+      "text": "hope hundred",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:37:17Z",
+      "text": "words the time",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:40:31Z",
+      "text": "so time",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:49:23Z",
+      "text": "what's the time",
+      "intent": "get_time",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:49:43Z",
+      "text": "who is it en masse",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T09:50:10Z",
+      "text": "who is elon musk",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T10:09:27Z",
+      "text": "a long lists",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:40:30Z",
+      "text": "who is done less",
+      "intent": "chat_response",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:41:10Z",
+      "text": "elon musk",
+      "intent": "chat_response",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:43:06Z",
+      "text": "what the gold praise in india today",
+      "intent": "chat_response",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:43:53Z",
+      "text": "open brave",
+      "intent": "open_app",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:45:28Z",
+      "text": "there's yeah",
+      "intent": "chat_response",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:45:55Z",
+      "text": "play songs on your go",
+      "intent": "play_media",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:50:27Z",
+      "text": "blair baby on sport yeah you too",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:50:40Z",
+      "text": "who waited on must",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:51:56Z",
+      "text": "is it on must the",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:52:10Z",
+      "text": "who is elon musk",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:55:52Z",
+      "text": "oh you don't list",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:56:11Z",
+      "text": "who is it on mosque",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T14:56:26Z",
+      "text": "who is elon musk",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T15:04:25Z",
+      "text": "who is elon musk",
+      "intent": "chat_response",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T15:04:25Z",
+      "text": "who is elon musk",
+      "intent": "unknown",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T15:17:03Z",
+      "text": "play songs on youtube",
+      "intent": "youtube_search",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T15:20:28Z",
+      "text": "all is a long must",
+      "intent": "chat_response",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T15:21:06Z",
+      "text": "play in these songs on youtube",
+      "intent": "youtube_search",
+      "success": true
+    },
+    {
+      "ts": "2026-05-01T15:21:06Z",
+      "text": "play in these songs on youtube",
+      "intent": "open_app",
+      "success": true
+    }
+  ],
+  "last_action": "open_app",
+  "last_app_opened": "chrome"
 }

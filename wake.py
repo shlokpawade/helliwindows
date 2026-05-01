@@ -36,7 +36,7 @@ class WakeWordDetector:
         logger.info("Loading Vosk model for wake-word detection …")
         model = Model(VOSK_MODEL_PATH)
         # Keyword list format for Vosk grammar
-        grammar = json.dumps([WAKE_WORD, "[unk]"])
+        grammar = json.dumps(["hey windows"])
         self._rec = KaldiRecognizer(model, AUDIO_SAMPLE_RATE, grammar)
         logger.info("Wake-word detector ready. Listening for '%s' …", WAKE_WORD)
 
@@ -58,7 +58,7 @@ class WakeWordDetector:
     # Detection loop
     # ------------------------------------------------------------------
     def _detect_loop(self) -> None:
-        with sd.RawInputStream(
+        with sd.InputStream(
             samplerate=AUDIO_SAMPLE_RATE,
             blocksize=AUDIO_BLOCK_SIZE,
             device=MIC_DEVICE_INDEX,

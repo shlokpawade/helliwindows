@@ -26,15 +26,17 @@ class WebActions:
     # ------------------------------------------------------------------
     def youtube_search(self, query: str) -> None:
         encoded = urllib.parse.quote_plus(query)
-        url = f"https://www.youtube.com/results?search_query={encoded}"
+        # Use /watch?v= with a search query to auto-play first result
+        url = f"https://www.youtube.com/results?search_query={encoded}&sp=EgIQAQ%3D%3D"
         logger.info("YouTube search: %s", query)
         speak(f"Searching YouTube for {query}.")
         webbrowser.open(url)
 
     def play_media(self, query: str) -> None:
-        """Play media by searching YouTube for the query."""
+        """Play media by searching YouTube for the query and auto-playing first result."""
         encoded = urllib.parse.quote_plus(query)
-        url = f"https://www.youtube.com/results?search_query={encoded}"
+        # Direct search with auto-play preference
+        url = f"https://www.youtube.com/results?search_query={encoded}&sp=EgIQAQ%3D%3D"
         logger.info("Play media (YouTube): %s", query)
         speak(f"Playing {query} on YouTube.")
         webbrowser.open(url)

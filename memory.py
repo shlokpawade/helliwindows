@@ -7,6 +7,7 @@ Responsibilities:
 - Provide app-mapping lookups and routine storage.
 """
 
+import difflib
 import json
 import threading
 from pathlib import Path
@@ -14,6 +15,23 @@ from typing import Any
 
 from config import MEMORY_FILE, MAX_MEMORY_ENTRIES
 from utils import logger, log_event, now_iso
+
+_COMMON_APP_MAPPINGS = {
+    "brave": "brave.exe",
+    "edge": "msedge.exe",
+    "chrome": "chrome.exe",
+    "firefox": "firefox.exe",
+    "spotify": "spotify.exe",
+    "notepad": "notepad.exe",
+    "calculator": "calc.exe",
+    "paint": "mspaint.exe",
+    "vlc": "vlc.exe",
+    "word": "winword.exe",
+    "excel": "excel.exe",
+    "powerpoint": "powerpnt.exe",
+    "vs code": "code",
+    "visual studio code": "code",
+}
 
 
 class Memory:
@@ -83,7 +101,31 @@ class Memory:
     def resolve_app(self, name: str) -> str | None:
         """Return the executable for *name* from app_mappings, or None."""
         mappings: dict = self._data.get("app_mappings", {})
-        return mappings.get(name.lower())
+        normalized = name.lower().strip()
+        if normalized in mappings:
+            return mappings[normalized]
+
+        if normalized.endswith("s"):
+            singular = normalized[:-1]
+            if singular in mappings:
+                logger.info("App name singularised: %s -> %s", normalized, singular)
+                return mappings[singular]
+            if singular in _COMMON_APP_MAPPINGS:
+                logger.info("App name singularised: %s -> %s", normalized, singular)
+                return _COMMON_APP_MAPPINGS[singular]
+
+        if normalized in _COMMON_APP_MAPPINGS:
+            return _COMMON_APP_MAPPINGS[normalized]
+
+        # Fuzzy match against known app names from memory and fallback list.
+        candidates = list(mappings.keys()) + list(_COMMON_APP_MAPPINGS.keys())
+        best_match = difflib.get_close_matches(normalized, candidates, n=1, cutoff=0.6)
+        if best_match:
+            match = best_match[0]
+            logger.info("Fuzzy app match: %s -> %s", normalized, match)
+            return mappings.get(match) or _COMMON_APP_MAPPINGS.get(match)
+
+        return None
 
     def add_app_mapping(self, name: str, executable: str) -> None:
         with self._lock:

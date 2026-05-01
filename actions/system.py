@@ -172,4 +172,32 @@ class SystemActions:
         today = datetime.now().strftime("%A, %B %d, %Y")
         speak(f"Today is {today}.")
 
+    def chat_response(self, message: str) -> None:
+        """Speak a general information response from the LLM."""
+        speak(message)
+
+    # ------------------------------------------------------------------
+    # Messaging
+    # ------------------------------------------------------------------
+    def send_whatsapp_message(self, contact: str, message: str) -> None:
+        """Send a WhatsApp message using pyautogui automation."""
+        try:
+            import pyautogui as pg  # optional dependency
+            import time
+            # Assume WhatsApp is open and focused
+            # Search for contact
+            pg.hotkey('ctrl', 'f')  # Open search
+            time.sleep(0.5)
+            pg.write(contact, interval=0.1)
+            time.sleep(1)
+            pg.press('enter')  # Select contact
+            time.sleep(0.5)
+            pg.write(message, interval=0.1)
+            pg.press('enter')  # Send
+            speak(f"Sent message to {contact}.")
+        except ImportError:
+            speak("pyautogui is not installed. Run pip install pyautogui to enable messaging automation.")
+        except Exception as e:
+            speak(f"Failed to send message: {e}")
+
 

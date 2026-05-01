@@ -105,7 +105,10 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\blist\s+(?:files?\s+in\s+)?(?P<path>.+)"), "list_files", _file_arg),
 
     # ---- Web / browser ----
+    # Price/rate/cost queries → web search (fast, no LLM needed)
+    (re.compile(r"\b(?:what\s+(?:is|s)\s+)?(?:the\s+)?(?P<query>.+?)\s+(?:price|rate|cost|price\s+today)\b"), "web_search", _query_arg),
     (re.compile(r"\bsearch\s+(?:for\s+)?(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\b(?:search\s+for\s+)?(?P<query>.+?)\s+on\s+youtube\b"), "youtube_search", _query_arg),
     (re.compile(r"\byoutube\s+(?P<query>.+)"), "youtube_search", _query_arg),
     # "play X on youtube" must come before the generic "play X"
     (re.compile(r"\bplay\s+(?P<query>.+)\s+on\s+youtube\b"), "youtube_search", _query_arg),
@@ -120,8 +123,8 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bgit\s+(?P<cmd>status|log|pull|push|commit.*)"), "git_command", _git_arg),
 
     # ---- Memory / info ----
-    (re.compile(r"\bwhat\s+(is\s+)?the\s+time\b"), "get_time", None),
-    (re.compile(r"\bwhat\s+(is\s+)?the\s+date\b"), "get_date", None),
+    (re.compile(r"\bwhat\s+(is\s+|s\s+)?the\s+time\b"), "get_time", None),
+    (re.compile(r"\bwhat\s+(is\s+|s\s+)?the\s+date\b"), "get_date", None),
     (re.compile(r"\bremember\s+that\s+(?P<app>.+)\s+is\s+(?P<path>.+)"), "add_app_mapping",
      lambda m: {"app": m.group("app").strip(), "executable": m.group("path").strip()}),
 
@@ -136,36 +139,158 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
 # ---------------------------------------------------------------------------
 
 _LLM_SYSTEM_PROMPT = (
-    "You are an intent parser for a Windows voice assistant. "
-    "Given a user command, respond with ONLY a JSON object like: "
-    '{"intent": "intent_name", "args": {"key": "value"}}. '
-    "Use snake_case for intent names. Keep args minimal."
+    "You are Jarvis, a Windows voice assistant. "
+    "Parse the user command into a JSON array of intents only. "
+    "Do not include any text, markdown, or explanation outside the JSON. "
+    "Use snake_case for intent names. Keep args minimal. "
+    "\n\nValid intents:\n"
+    "- open_app: [{\"intent\": \"open_app\", \"args\": {\"app\": \"chrome\"}}]\n"
+    "- web_search: [{\"intent\": \"web_search\", \"args\": {\"query\": \"python tutorials\"}}]\n"
+    "- youtube_search: [{\"intent\": \"youtube_search\", \"args\": {\"query\": \"music\"}}]\n"
+    "- volume_up: [{\"intent\": \"volume_up\", \"args\": {}}]\n"
+    "- volume_down: [{\"intent\": \"volume_down\", \"args\": {}}]\n"
+    "- set_volume: [{\"intent\": \"set_volume\", \"args\": {\"value\": 50}}]\n"
+    "- mute: [{\"intent\": \"mute\", \"args\": {}}]\n"
+    "- get_time: [{\"intent\": \"get_time\", \"args\": {}}]\n"
+    "- get_date: [{\"intent\": \"get_date\", \"args\": {}}]\n"
+    "- screenshot: [{\"intent\": \"screenshot\", \"args\": {}}]\n"
+    "- shutdown: [{\"intent\": \"shutdown\", \"args\": {}}]\n"
+    "- send_whatsapp_message: [{\"intent\": \"send_whatsapp_message\", \"args\": {\"contact\": \"mummy\", \"message\": \"hey\"}}]\n"
+    "- chat_response: [{\"intent\": \"chat_response\", \"args\": {\"message\": \"Elon Musk is ...\"}}]\n"
+    "- help: [{\"intent\": \"help\", \"args\": {}}]\n"
+    "- stop: [{\"intent\": \"stop\", \"args\": {}}]\n"
+    "\nIf the user asks a general question, return chat_response with a message. "
+    "If you cannot map to a known command, return [{\"intent\": \"unknown\", \"args\": {}}]."
 )
 
 
-def _query_llm(text: str) -> Intent | None:
+
+def _query_llm(text: str) -> list[Intent] | None:
     if not USE_LOCAL_LLM:
         return None
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": f"Command: {text}\n",
-        "system": _LLM_SYSTEM_PROMPT,
-        "stream": False,
-    }
+
+    endpoint = OLLAMA_URL.rstrip("/")
+    if endpoint.endswith("/api/generate") or endpoint.endswith("/v1/generate"):
+        request_style = "prompt"
+    elif endpoint.endswith("/chat/completions") or endpoint.endswith("/completions"):
+        request_style = "openai"
+    else:
+        endpoint = f"{endpoint}/v1/chat/completions"
+        request_style = "openai"
+
+    logger.debug("LLM request: %s model=%s style=%s text='%s'", endpoint, OLLAMA_MODEL, request_style, text)
+
+    if request_style == "openai":
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": _LLM_SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 140,
+        }
+    else:
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": f"{_LLM_SYSTEM_PROMPT}\n\nCommand: {text}\n",
+            "stream": False,
+            "temperature": 0.0,
+            "max_tokens": 140,
+        }
+
     try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT)
+        resp = requests.post(endpoint, json=payload, timeout=OLLAMA_TIMEOUT)
         resp.raise_for_status()
-        raw_json = resp.json().get("response", "")
+        response_data = resp.json()
+        logger.debug("LLM raw response: %s", response_data)
+        raw_response = ""
+
+        if isinstance(response_data, dict):
+            if "response" in response_data and isinstance(response_data["response"], str):
+                raw_response = response_data["response"].strip()
+            elif "choices" in response_data and response_data["choices"]:
+                first_choice = response_data["choices"][0]
+                if isinstance(first_choice, dict):
+                    if "message" in first_choice and isinstance(first_choice["message"], dict):
+                        raw_response = first_choice["message"].get("content", "").strip()
+                    elif "text" in first_choice:
+                        raw_response = first_choice.get("text", "").strip()
+            elif "result" in response_data and isinstance(response_data["result"], str):
+                raw_response = response_data["result"].strip()
+        elif isinstance(response_data, str):
+            raw_response = response_data.strip()
+
         import json as _json  # local import to avoid name clash
-        data = _json.loads(raw_json)
-        return Intent(
-            name=data.get("intent", "unknown"),
-            args=data.get("args", {}),
-            raw=text,
-            confidence=0.8,
-        )
+        data = None
+        if raw_response:
+            raw_text = raw_response
+            logger.debug("LLM parsing response: %s", raw_text)
+            for attempt in range(2):
+                try:
+                    data = _json.loads(raw_text)
+                    logger.debug("LLM JSON parsed successfully: %s", data)
+                    break
+                except ValueError:
+                    start = raw_text.find("[")
+                    end = raw_text.rfind("]")
+                    if start != -1 and end != -1 and end > start:
+                        raw_text = raw_text[start:end + 1]
+                    else:
+                        start = raw_text.find("{")
+                        end = raw_text.rfind("}")
+                        if start != -1 and end != -1 and end > start:
+                            raw_text = raw_text[start:end + 1]
+                        else:
+                            data = None
+                            break
+
+        if isinstance(data, list):
+            logger.info("LLM returned list of intents: %d intents", len(data))
+            return [Intent(
+                name=item.get("intent", "unknown"),
+                args=item.get("args", {}) if isinstance(item, dict) else {},
+                raw=text,
+                confidence=0.8,
+            ) for item in data]
+
+        if isinstance(data, dict):
+            if "intent" in data:
+                logger.info("LLM returned single intent: %s", data.get("intent"))
+                return [Intent(
+                    name=data.get("intent", "unknown"),
+                    args=data.get("args", {}),
+                    raw=text,
+                    confidence=0.8,
+                )]
+            if "response" in data and isinstance(data["response"], str):
+                logger.info("LLM returned response: %s", data["response"][:50])
+                return [Intent(
+                    name="chat_response",
+                    args={"message": data["response"]},
+                    raw=text,
+                    confidence=0.6,
+                )]
+
+        if raw_response:
+            logger.info("LLM returning raw response: %s", raw_response[:50])
+            return [Intent(
+                name="chat_response",
+                args={"message": raw_response},
+                raw=text,
+                confidence=0.5,
+            )]
+
+        logger.warning("LLM returned empty response for: %s", text)
+        return None
+    except requests.Timeout:
+        logger.error("LLM timeout (>%d sec) for: %s", OLLAMA_TIMEOUT, text)
+        return None
+    except requests.ConnectionError as e:
+        logger.error("LLM connection error: %s (is Ollama running on %s?)", e, OLLAMA_URL)
+        return None
     except Exception as exc:  # noqa: BLE001
-        logger.warning("LLM fallback failed: %s", exc)
+        logger.error("LLM fallback failed: %s", exc, exc_info=True)
         return None
 
 
@@ -177,8 +302,8 @@ class Brain:
     def __init__(self, memory: Memory) -> None:
         self._memory = memory
 
-    def parse(self, text: str) -> Intent:
-        """Return the best Intent for the given raw *text*."""
+    def parse(self, text: str) -> list[Intent]:
+        """Return a list of best Intent(s) for the given raw *text*."""
         norm = normalise(text)
         logger.debug("Brain parsing: '%s'", norm)
 
@@ -186,7 +311,7 @@ class Brain:
         if norm in ("open it", "launch it", "start it"):
             last = self._memory.last_app_opened()
             if last:
-                return Intent("open_app", {"app": last}, raw=text)
+                return [Intent("open_app", {"app": last}, raw=text)]
 
         # 2. Rule matching
         for pattern, intent_name, extractor in _RULES:
@@ -194,43 +319,43 @@ class Brain:
             if m:
                 args = extractor(m) if extractor else {}
                 logger.debug("Rule match: %s → %s %s", pattern.pattern, intent_name, args)
-                return Intent(intent_name, args, raw=text)
+                return [Intent(intent_name, args, raw=text)]
 
         # 3. LLM fallback
-        llm_intent = _query_llm(text)
-        if llm_intent:
-            return llm_intent
+        llm_intents = _query_llm(text)
+        if llm_intents:
+            return llm_intents
 
         logger.info("Intent unknown for: '%s'", text)
-        return Intent("unknown", {}, raw=text, confidence=0.0)
+        return [Intent("unknown", {}, raw=text, confidence=0.0)]
 
     def parse_multi(self, text: str) -> list[Intent]:
         """
-        Split a compound command on "and" / "," and parse each segment.
+        Parse compound commands, using LLM for complex ones, else split on "and" / ",".
 
-        Example:
-            "open chrome and play lo-fi"
-            → [Intent("open_app", {"app": "chrome"}),
-               Intent("play_media", {"query": "lo-fi"})]
-
-        Single-segment inputs fall through to parse() unchanged so callers
-        can always use this method instead of parse().
+        First tries LLM on the whole text for multi-step parsing.
+        If LLM returns multiple intents, use those.
+        Else, split and parse segments.
         """
+        # Try LLM first for multi-step
+        llm_intents = _query_llm(text)
+        if llm_intents and len(llm_intents) > 1:
+            logger.debug("LLM parsed multi-step: %d intents", len(llm_intents))
+            return llm_intents
+
         norm = normalise(text)
         # Split on literal " and " or a comma followed by optional whitespace.
-        # Use a non-greedy approach to avoid over-splitting queries like
-        # "search for python and ruby" – each segment is still validated.
         segments = re.split(r"\s+and\s+|,\s*", norm)
         segments = [s.strip() for s in segments if s.strip()]
 
         if len(segments) <= 1:
-            return [self.parse(text)]
+            return self.parse(text)
 
         intents: list[Intent] = []
         for seg in segments:
-            intent = self.parse(seg)
-            intents.append(intent)
-            logger.debug("parse_multi segment '%s' → %s %s", seg, intent.name, intent.args)
+            seg_intents = self.parse(seg)
+            intents.extend(seg_intents)
+            logger.debug("parse_multi segment '%s' → %d intents", seg, len(seg_intents))
 
         logger.info("parse_multi produced %d intents from: '%s'", len(intents), norm)
         return intents

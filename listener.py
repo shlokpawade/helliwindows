@@ -20,7 +20,7 @@ from config import (
 from utils import logger, speak
 
 # Maximum silence (in seconds) before considering the utterance complete
-_SILENCE_TIMEOUT = 2.0
+_SILENCE_TIMEOUT = 3.5
 
 
 class Listener:
@@ -49,8 +49,9 @@ class Listener:
         text = ""
         silence_chunks = 0
         max_silence = int(_SILENCE_TIMEOUT * AUDIO_SAMPLE_RATE / AUDIO_BLOCK_SIZE)
+        best_partial = ""
 
-        with sd.RawInputStream(
+        with sd.InputStream(
             samplerate=AUDIO_SAMPLE_RATE,
             blocksize=AUDIO_BLOCK_SIZE,
             device=MIC_DEVICE_INDEX,
@@ -74,10 +75,12 @@ class Listener:
                         silence_chunks += 1
                 else:
                     partial = json.loads(rec.PartialResult()).get("partial", "")
-                    if not partial:
-                        silence_chunks += 1
-                    else:
+                    if partial:
+                        if len(partial) > len(best_partial):
+                            best_partial = partial
                         silence_chunks = 0
+                    else:
+                        silence_chunks += 1
 
                 if silence_chunks >= max_silence:
                     break
@@ -86,6 +89,10 @@ class Listener:
         final = json.loads(rec.FinalResult()).get("text", "").strip()
         if final and final not in text:
             text += (" " + final) if text else final
+
+        if not text and best_partial:
+            logger.info("STT partial fallback: '%s'", best_partial)
+            text = best_partial
 
         logger.info("STT result: '%s'", text)
         return text.strip()
