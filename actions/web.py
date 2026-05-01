@@ -31,6 +31,14 @@ class WebActions:
         speak(f"Searching YouTube for {query}.")
         webbrowser.open(url)
 
+    def play_media(self, query: str) -> None:
+        """Play media by searching YouTube for the query."""
+        encoded = urllib.parse.quote_plus(query)
+        url = f"https://www.youtube.com/results?search_query={encoded}"
+        logger.info("Play media (YouTube): %s", query)
+        speak(f"Playing {query} on YouTube.")
+        webbrowser.open(url)
+
     # ------------------------------------------------------------------
     # Open URL directly
     # ------------------------------------------------------------------

@@ -41,13 +41,14 @@ Say **"hey windows"**, then speak your command. Jarvis listens, understands, and
 | **Volume control** | Up, down, mute, unmute, set percentage |
 | **System actions** | Shutdown, restart, sleep, lock, screenshot |
 | **File manager** | Open files/folders, delete, list directory |
-| **Web actions** | Google search, YouTube search, open URL |
-| **Automation modes** | Study mode, coding mode, custom routines |
+| **Web actions** | Google search, YouTube search/play, open URL |
+| **Multi-command** | Chain commands with "and" or "," – e.g. *"open chrome and play lo-fi"* |
+| **Automation modes** | Study mode, coding mode, focus mode, custom routines |
 | **Context memory** | Remembers last opened app; follow-ups like *"open it"* |
 | **Developer mode** | Run Python files, run git commands, open VS Code projects |
 | **Local LLM fallback** | Optional Ollama integration for richer NLU |
 | **Safety** | Confirmation prompts for dangerous actions |
-| **Logging** | Structured logs to `jarvis.log` and stdout |
+| **Logging** | Text log (`jarvis.log`) + structured JSON event log (`logs.json`) |
 
 ---
 
@@ -68,31 +69,33 @@ Say **"hey windows"**, then speak your command. Jarvis listens, understands, and
                                      ▼
                             ┌──────────────────┐
                             │   brain.py       │
-                            │ Rules → Intent   │
+                            │ parse_multi()    │
+                            │ Rules → Intents  │
                             │ (+ Ollama LLM)   │
                             └────────┬─────────┘
-                                     │ Intent
+                                     │ list[Intent]
                                      ▼
                             ┌──────────────────┐
                             │   planner.py     │
                             │ Expand → Tasks   │
                             └────────┬─────────┘
                                      │ Task list
-                          ┌──────────┴──────────┐
-                          ▼          ▼           ▼
-                   ┌──────────┐ ┌────────┐ ┌─────────┐
-                   │system.py │ │files.py│ │ web.py  │
-                   └──────────┘ └────────┘ └─────────┘
+                          ┌──────────┴───────────────────────┐
+                          ▼          ▼           ▼           ▼
+                   ┌──────────┐ ┌────────┐ ┌─────────┐ ┌────────┐
+                   │system.py │ │files.py│ │ web.py  │ │ dev.py │
+                   └──────────┘ └────────┘ └─────────┘ └────────┘
                           │
                           ▼
                    ┌──────────────┐
                    │  memory.py   │
                    │ memory.json  │
+                   │  logs.json   │
                    └──────────────┘
 ```
 
-**Data flow:** microphone → wake word detection → STT → intent parsing →
-task planning → action execution → memory update → TTS response.
+**Data flow:** microphone → wake word detection → STT → intent parsing
+→ multi-command splitting → task planning → action execution → memory/log update → TTS response.
 
 ---
 
@@ -105,21 +108,26 @@ jarvis-windows-assistant/
 ├── wake.py            # Wake-word detection (Vosk keyword grammar)
 ├── listener.py        # Offline STT – records one utterance via Vosk
 ├── brain.py           # Hybrid intent engine: rules + optional Ollama LLM
+│                      #   parse_multi() splits compound "X and Y" commands
 ├── planner.py         # Expands intents into Tasks and dispatches them
+│                      #   plan_and_run_multi() executes chained commands
 ├── memory.py          # Read/write persistent memory (memory.json)
 ├── config.py          # All settings, paths, and flags (edit or use .env)
-├── utils.py           # Logger, TTS (speak), text normalisation, helpers
+├── utils.py           # Logger, TTS (speak), text normalisation, log_event
 │
 ├── actions/
 │   ├── __init__.py    # Registers all action handlers → dict for Planner
-│   ├── system.py      # App control, volume, power, screenshot, dev tools
+│   ├── system.py      # App control, volume, power management, screenshot
 │   ├── files.py       # Open / delete / list files; add app mappings
-│   └── web.py         # Web search, YouTube search, open URL
+│   ├── web.py         # Web search, YouTube search/play, open URL
+│   └── dev.py         # Developer mode: run Python, git commands, VS Code
 │
 ├── models/            # ← place your downloaded Vosk model here
 │   └── vosk-model-small-en-us-0.15/
 │
 ├── memory.json        # Persistent store: app mappings, routines, history
+├── logs.json          # Structured NDJSON event log (auto-created at runtime)
+├── jarvis.log         # Text debug log (auto-created at runtime)
 ├── requirements.txt   # Python dependencies
 ├── .env.example       # Environment variable template
 └── README.md          # This file
@@ -207,31 +215,57 @@ Speak **"hey windows"** – wait for the *"Listening …"* prompt – then say y
 ## Example Commands
 
 ```
+# App control
 hey windows … open notepad
 hey windows … open it          ← re-opens last app
 hey windows … close chrome
+
+# Volume
 hey windows … volume up
 hey windows … set volume to 50
 hey windows … mute
+
+# Multi-command (chain with "and" or ",")
+hey windows … open chrome and search for Python tutorials
+hey windows … open notepad and play lo-fi
+hey windows … mute, open vs code, run routine coding
+
+# Web
 hey windows … search for Python tutorials
 hey windows … play lofi music on YouTube
+hey windows … play lo-fi                   ← direct YouTube search
 hey windows … open https://github.com
+
+# Files
 hey windows … open file C:\Users\Me\notes.txt
 hey windows … list files in Downloads
 hey windows … delete file C:\Users\Me\old_report.txt
+
+# System
 hey windows … shutdown
 hey windows … restart
 hey windows … lock
 hey windows … screenshot
 hey windows … what is the time
 hey windows … what is the date
+
+# Automation modes / routines
 hey windows … activate study mode
 hey windows … activate coding mode
+hey windows … activate focus mode
 hey windows … run routine my morning routine
+
+# Memory
 hey windows … remember that vlc is vlc.exe
-hey windows … run file C:\scripts\daily.py   ← developer mode
-hey windows … git status                      ← developer mode
-hey windows … open project C:\code\myapp     ← developer mode
+
+# Developer mode (DEVELOPER_MODE=true required)
+hey windows … run file C:\scripts\daily.py
+hey windows … git status
+hey windows … git add .
+hey windows … git commit -m fix bug
+hey windows … open project C:\code\myapp
+
+# Meta
 hey windows … help
 hey windows … stop
 ```

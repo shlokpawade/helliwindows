@@ -60,11 +60,15 @@ class JarvisAssistant:
             speak("I didn't catch that. Please try again.")
             return
 
-        intent = self._brain.parse(text)
-        logger.info("Intent: %s  args: %s", intent.name, intent.args)
+        intents = self._brain.parse_multi(text)
+        logger.info("Parsed %d intent(s) from: '%s'", len(intents), text)
+        for intent in intents:
+            logger.debug("  Intent: %s  args: %s", intent.name, intent.args)
 
-        success = self._planner.plan_and_run(intent)
-        self._memory.record_command(text, intent.name, success)
+        success = self._planner.plan_and_run_multi(intents)
+        # Record each recognised intent in memory
+        for intent in intents:
+            self._memory.record_command(text, intent.name, success)
 
     # ------------------------------------------------------------------
     # Graceful shutdown

@@ -16,5 +16,5 @@ pyautogui==0.9.54
 # Optional: LLM fallback (Ollama HTTP client)
 requests==2.31.0
 
-# Optional: environment variables loader
+# Environment variables loader
 python-dotenv==1.0.1

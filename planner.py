@@ -1,8 +1,9 @@
 """
 planner.py – Multi-step task planner.
 
-Takes an Intent, optionally expands it into sub-tasks (for routines or
-compound commands), and dispatches each task to the correct action handler.
+Takes one or more Intents, optionally expands them into sub-tasks (for
+routines or compound commands), and dispatches each task to the correct
+action handler.
 """
 
 from __future__ import annotations
@@ -45,12 +46,24 @@ class Planner:
     # ------------------------------------------------------------------
     def plan_and_run(self, intent: Intent) -> bool:
         """
-        Expand *intent* into one or more Tasks and execute them in order.
+        Expand a single *intent* into one or more Tasks and execute them.
         Returns True if all tasks succeeded.
         """
         tasks = self._expand(intent)
         logger.debug("Planned tasks: %s", tasks)
         return self._execute_all(tasks)
+
+    def plan_and_run_multi(self, intents: list[Intent]) -> bool:
+        """
+        Process a list of intents (from a compound command) sequentially.
+        Returns True if every intent's tasks succeeded.
+        """
+        all_ok = True
+        for intent in intents:
+            ok = self.plan_and_run(intent)
+            if not ok:
+                all_ok = False
+        return all_ok
 
     # ------------------------------------------------------------------
     # Expansion
@@ -64,9 +77,8 @@ class Planner:
             routine = self._memory.get_routine(mode)
             if routine:
                 return [Task(step["action"], step.get("args", {})) for step in routine]
-            # If no routine defined, just speak a note
-            speak(f"No routine defined for {mode} mode yet.")
-            return []
+            # If no routine defined, fall through to the registered handler
+            return [Task(intent.name, intent.args)]
 
         # All other intents map 1-to-1
         return [Task(intent.name, intent.args)]
@@ -75,12 +87,11 @@ class Planner:
     # Execution
     # ------------------------------------------------------------------
     def _execute_all(self, tasks: list[Task]) -> bool:
-        success = True
+        all_ok = True
         for task in tasks:
             ok = self._execute(task)
-            if not ok:
-                success = False
-        return success
+            all_ok = all_ok and ok
+        return all_ok
 
     def _execute(self, task: Task) -> bool:
         handler = self._actions.get(task.action)

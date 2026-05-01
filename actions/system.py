@@ -2,21 +2,21 @@
 actions/system.py – System-level actions.
 
 Covers: app launching/closing, volume control, shutdown/restart/sleep/lock,
-screenshots, time/date, Python file execution, git commands, VS Code projects.
+screenshots, and time/date queries.
+
+Developer-mode actions (run Python files, git, VS Code) live in actions/dev.py.
 """
 
 import os
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import psutil
-import pycaw.pycaw as _pycaw
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
-from config import CONFIRM_DANGEROUS, DEVELOPER_MODE, VSCODE_PATH
+from config import CONFIRM_DANGEROUS
 from utils import confirm_action, logger, run_command, speak
 
 # Characters not allowed in application names resolved from memory/voice input
@@ -172,39 +172,4 @@ class SystemActions:
         today = datetime.now().strftime("%A, %B %d, %Y")
         speak(f"Today is {today}.")
 
-    # ------------------------------------------------------------------
-    # Developer mode
-    # ------------------------------------------------------------------
-    def run_python_file(self, path: str) -> None:
-        if not DEVELOPER_MODE:
-            speak("Developer mode is disabled. Set DEVELOPER_MODE=true in .env to enable it.")
-            return
-        # Validate: must be an existing .py file (no shell metacharacters)
-        resolved = Path(os.path.expandvars(os.path.expanduser(path))).resolve()
-        if not resolved.exists() or resolved.suffix != ".py":
-            speak(f"I couldn't find a Python file at {path}.")
-            return
-        if _safe_executable(str(resolved)) is None:
-            speak("That file path contains unsafe characters.")
-            return
-        speak(f"Running {resolved.name}.")
-        run_command([sys.executable, str(resolved)])
 
-    def git_command(self, command: str) -> None:
-        if not DEVELOPER_MODE:
-            speak("Developer mode is disabled.")
-            return
-        parts = ["git"] + command.split()
-        result = run_command(parts, capture=True)
-        output = (result.stdout or result.stderr or "Done.").strip()
-        speak(output[:200] if len(output) > 200 else output)
-
-    def open_vscode_project(self, path: str) -> None:
-        if not DEVELOPER_MODE:
-            speak("Developer mode is disabled.")
-            return
-        speak(f"Opening {path} in VS Code.")
-        try:
-            subprocess.Popen([VSCODE_PATH, path], shell=False)  # noqa: S603
-        except FileNotFoundError:
-            speak("VS Code was not found. Make sure it is installed and on your PATH.")

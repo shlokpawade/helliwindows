@@ -5,6 +5,7 @@ Import this module to get the complete {action_name: handler} mapping
 ready to pass to Planner.register_actions().
 """
 
+from actions.dev import DevActions
 from actions.files import FileActions
 from actions.system import SystemActions
 from actions.web import WebActions
@@ -15,6 +16,7 @@ def build_action_registry(memory) -> dict:
     sys_act = SystemActions(memory)
     file_act = FileActions(memory)
     web_act = WebActions()
+    dev_act = DevActions()
 
     return {
         # System
@@ -33,9 +35,6 @@ def build_action_registry(memory) -> dict:
         "screenshot":        sys_act.screenshot,
         "get_time":          sys_act.get_time,
         "get_date":          sys_act.get_date,
-        "run_python_file":   sys_act.run_python_file,
-        "git_command":       sys_act.git_command,
-        "open_vscode_project": sys_act.open_vscode_project,
 
         # Files
         "open_file":         file_act.open_file,
@@ -46,20 +45,36 @@ def build_action_registry(memory) -> dict:
         # Web
         "web_search":        web_act.web_search,
         "youtube_search":    web_act.youtube_search,
+        "play_media":        web_act.play_media,
         "open_url":          web_act.open_url,
 
+        # Developer (gated by DEVELOPER_MODE flag)
+        "run_python_file":   dev_act.run_python_file,
+        "git_command":       dev_act.git_command,
+        "open_vscode_project": dev_act.open_vscode_project,
+
         # Meta
+        "activate_mode":     _activate_mode,
+        "run_routine":       _activate_mode,
         "help":              _help,
         "unknown":           _unknown,
         "stop":              _stop,
     }
 
 
+def _activate_mode(mode: str = "", **_) -> None:
+    """Spoken feedback when a mode/routine has no defined steps."""
+    from utils import speak
+    speak(f"No routine defined for {mode} mode yet. Add steps to memory.json.")
+
+
 def _help(**_) -> None:
     from utils import speak
     speak(
         "I can open apps, search the web, control volume, manage files, "
-        "run routines, and more. Just tell me what you need."
+        "run developer commands, activate modes, and more. "
+        "You can also chain commands using 'and', for example: "
+        "open chrome and search for python tutorials."
     )
 
 
