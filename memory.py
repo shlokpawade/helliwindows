@@ -31,6 +31,27 @@ _COMMON_APP_MAPPINGS = {
     "powerpoint": "powerpnt.exe",
     "vs code": "code",
     "visual studio code": "code",
+    # Windows built-ins / utilities
+    "settings": "ms-settings:",
+    "windows settings": "ms-settings:",
+    "task manager": "taskmgr.exe",
+    "file explorer": "explorer.exe",
+    "explorer": "explorer.exe",
+    "control panel": "control.exe",
+    "command prompt": "cmd.exe",
+    "cmd": "cmd.exe",
+    "powershell": "powershell.exe",
+    "device manager": "devmgmt.msc",
+    "disk management": "diskmgmt.msc",
+    "registry editor": "regedit.exe",
+    "snipping tool": "SnippingTool.exe",
+    "magnifier": "magnify.exe",
+    "on screen keyboard": "osk.exe",
+    "character map": "charmap.exe",
+    "resource monitor": "resmon.exe",
+    "performance monitor": "perfmon.exe",
+    "event viewer": "eventvwr.msc",
+    "services": "services.msc",
 }
 
 

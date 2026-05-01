@@ -128,6 +128,42 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bremember\s+that\s+(?P<app>.+)\s+is\s+(?P<path>.+)"), "add_app_mapping",
      lambda m: {"app": m.group("app").strip(), "executable": m.group("path").strip()}),
 
+    # ---- Battery / system ----
+    (re.compile(r"\bbattery\b"), "get_battery", None),
+    (re.compile(r"\b(?:system\s+info|cpu\s+usage|ram\s+usage|memory\s+usage|system\s+status)\b"),
+     "get_system_info", None),
+
+    # ---- Calculator ----
+    # "calculate 5 plus 3", "compute 10 divided by 2"
+    (re.compile(r"\b(?:calculate|compute)\s+(?P<expr>.+)"),
+     "calculate", lambda m: {"expression": m.group("expr").strip()}),
+    # "what is 5 times 6" — only if the expression starts with a digit
+    (re.compile(r"\bwhat\s+(?:is|s)\s+(?P<expr>[0-9].+)"),
+     "calculate", lambda m: {"expression": m.group("expr").strip()}),
+
+    # ---- Timer ----
+    (re.compile(
+        r"\bset\s+(?:a\s+)?(?P<value>\d+)\s*(?P<unit>minute|min|second|sec)s?\s+timer\b"
+    ), "set_timer",
+     lambda m: {"minutes": int(m.group("value")) if m.group("unit").startswith("m") else 0,
+                "seconds": int(m.group("value")) if m.group("unit").startswith("s") else 0}),
+    (re.compile(
+        r"\bset\s+(?:a\s+)?timer\s+(?:for\s+)?(?P<value>\d+)\s*(?P<unit>minute|min|second|sec)s?\b"
+    ), "set_timer",
+     lambda m: {"minutes": int(m.group("value")) if m.group("unit").startswith("m") else 0,
+                "seconds": int(m.group("value")) if m.group("unit").startswith("s") else 0}),
+
+    # ---- Notes ----
+    (re.compile(r"\btake\s+(?:a\s+)?note\s+(?:that\s+)?(?P<note>.+)"), "take_note",
+     lambda m: {"note": m.group("note").strip()}),
+    (re.compile(r"\bread\s+(?:my\s+)?notes?\b"), "read_notes", None),
+    (re.compile(r"\bclear\s+(?:my\s+)?notes?\b"), "clear_notes", None),
+
+    # ---- Weather ----
+    (re.compile(r"\bweather\s+(?:in\s+|at\s+|for\s+)?(?P<query>\S.+)"), "get_weather",
+     lambda m: {"location": m.group("query").strip()}),
+    (re.compile(r"\bweather\b"), "get_weather", lambda m: {"location": ""}),
+
     # ---- Meta ----
     (re.compile(r"\bhelp\b"), "help", None),
     (re.compile(r"\bstop\b|\bbye\b|\bexit\b|\bquit\b"), "stop", None),
@@ -188,7 +224,7 @@ def _query_llm(text: str) -> list[Intent] | None:
                 {"role": "user", "content": text},
             ],
             "temperature": 0.0,
-            "max_tokens": 140,
+            "max_tokens": 80,
         }
     else:
         payload = {
@@ -196,7 +232,7 @@ def _query_llm(text: str) -> list[Intent] | None:
             "prompt": f"{_LLM_SYSTEM_PROMPT}\n\nCommand: {text}\n",
             "stream": False,
             "temperature": 0.0,
-            "max_tokens": 140,
+            "max_tokens": 80,
         }
 
     try:
@@ -302,18 +338,19 @@ class Brain:
     def __init__(self, memory: Memory) -> None:
         self._memory = memory
 
-    def parse(self, text: str) -> list[Intent]:
-        """Return a list of best Intent(s) for the given raw *text*."""
+    # ------------------------------------------------------------------
+    # Internal: rule-based only (no LLM)
+    # ------------------------------------------------------------------
+    def _parse_rules(self, text: str) -> list[Intent]:
+        """Run only rule-based matching.  Returns [Intent("unknown")] on miss."""
         norm = normalise(text)
-        logger.debug("Brain parsing: '%s'", norm)
 
-        # 1. Context resolution: "open it" → last opened app
+        # Context resolution: "open it" → last opened app
         if norm in ("open it", "launch it", "start it"):
             last = self._memory.last_app_opened()
             if last:
                 return [Intent("open_app", {"app": last}, raw=text)]
 
-        # 2. Rule matching
         for pattern, intent_name, extractor in _RULES:
             m = pattern.search(norm)
             if m:
@@ -321,7 +358,21 @@ class Brain:
                 logger.debug("Rule match: %s → %s %s", pattern.pattern, intent_name, args)
                 return [Intent(intent_name, args, raw=text)]
 
-        # 3. LLM fallback
+        return [Intent("unknown", {}, raw=text, confidence=0.0)]
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def parse(self, text: str) -> list[Intent]:
+        """Return a list of best Intent(s) for the given raw *text*."""
+        logger.debug("Brain parsing: '%s'", normalise(text))
+
+        # 1. Rule matching (fast, offline)
+        intents = self._parse_rules(text)
+        if intents[0].name != "unknown":
+            return intents
+
+        # 2. LLM fallback (only for unrecognised commands)
         llm_intents = _query_llm(text)
         if llm_intents:
             return llm_intents
@@ -331,31 +382,45 @@ class Brain:
 
     def parse_multi(self, text: str) -> list[Intent]:
         """
-        Parse compound commands, using LLM for complex ones, else split on "and" / ",".
+        Parse compound commands split on 'and' / ','.
 
-        First tries LLM on the whole text for multi-step parsing.
-        If LLM returns multiple intents, use those.
-        Else, split and parse segments.
+        Fast path: split → rule-match each segment.  If every segment is
+        recognised by rules, return immediately without touching the LLM.
+        Slow path (LLM): only invoked when at least one segment is unknown,
+        in case the LLM can resolve the ambiguity as a multi-step command.
         """
-        # Try LLM first for multi-step
-        llm_intents = _query_llm(text)
-        if llm_intents and len(llm_intents) > 1:
-            logger.debug("LLM parsed multi-step: %d intents", len(llm_intents))
-            return llm_intents
-
         norm = normalise(text)
-        # Split on literal " and " or a comma followed by optional whitespace.
         segments = re.split(r"\s+and\s+|,\s*", norm)
         segments = [s.strip() for s in segments if s.strip()]
 
         if len(segments) <= 1:
             return self.parse(text)
 
+        # --- Fast path: rule-based matching for each segment ---
+        rule_intents: list[Intent] = []
+        for seg in segments:
+            seg_intents = self._parse_rules(seg)
+            rule_intents.extend(seg_intents)
+            logger.debug("parse_multi segment '%s' → %s", seg, seg_intents[0].name)
+
+        if all(i.name != "unknown" for i in rule_intents):
+            logger.info("parse_multi (rules) produced %d intents from: '%s'",
+                        len(rule_intents), norm)
+            return rule_intents
+
+        # --- Slow path: ask LLM about the full compound command ---
+        llm_intents = _query_llm(text)
+        if llm_intents and len(llm_intents) > 1:
+            logger.debug("LLM parsed multi-step: %d intents", len(llm_intents))
+            return llm_intents
+
+        # --- Fallback: per-segment parse (includes per-segment LLM if needed) ---
         intents: list[Intent] = []
         for seg in segments:
             seg_intents = self.parse(seg)
             intents.extend(seg_intents)
-            logger.debug("parse_multi segment '%s' → %d intents", seg, len(seg_intents))
+            logger.debug("parse_multi(fallback) segment '%s' → %d intent(s)",
+                         seg, len(seg_intents))
 
         logger.info("parse_multi produced %d intents from: '%s'", len(intents), norm)
         return intents

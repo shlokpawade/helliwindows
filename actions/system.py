@@ -177,6 +177,29 @@ class SystemActions:
         speak(message)
 
     # ------------------------------------------------------------------
+    # Battery / system info
+    # ------------------------------------------------------------------
+    def get_battery(self) -> None:
+        battery = psutil.sensors_battery()
+        if battery is None:
+            speak("Battery information is not available on this device.")
+            return
+        pct = int(battery.percent)
+        status = "charging" if battery.power_plugged else "not charging"
+        speak(f"Battery is at {pct} percent and {status}.")
+
+    def get_system_info(self) -> None:
+        cpu = psutil.cpu_percent(interval=0.5)
+        ram = psutil.virtual_memory()
+        used_gb = round(ram.used / (1024 ** 3), 1)
+        total_gb = round(ram.total / (1024 ** 3), 1)
+        speak(
+            f"CPU usage is {cpu} percent. "
+            f"RAM usage is {ram.percent} percent, "
+            f"{used_gb} of {total_gb} gigabytes used."
+        )
+
+    # ------------------------------------------------------------------
     # Messaging
     # ------------------------------------------------------------------
     def send_whatsapp_message(self, contact: str, message: str) -> None:

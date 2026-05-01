@@ -7,6 +7,7 @@ ready to pass to Planner.register_actions().
 
 from actions.dev import DevActions
 from actions.files import FileActions
+from actions.local import LocalActions
 from actions.system import SystemActions
 from actions.web import WebActions
 
@@ -17,6 +18,7 @@ def build_action_registry(memory) -> dict:
     file_act = FileActions(memory)
     web_act = WebActions()
     dev_act = DevActions()
+    local_act = LocalActions()
 
     return {
         # System
@@ -35,6 +37,8 @@ def build_action_registry(memory) -> dict:
         "screenshot":        sys_act.screenshot,
         "get_time":          sys_act.get_time,
         "get_date":          sys_act.get_date,
+        "get_battery":       sys_act.get_battery,
+        "get_system_info":   sys_act.get_system_info,
         "send_whatsapp_message": sys_act.send_whatsapp_message,
         "chat_response":     sys_act.chat_response,
 
@@ -49,6 +53,14 @@ def build_action_registry(memory) -> dict:
         "youtube_search":    web_act.youtube_search,
         "play_media":        web_act.play_media,
         "open_url":          web_act.open_url,
+
+        # Local utilities
+        "calculate":         local_act.calculate,
+        "set_timer":         local_act.set_timer,
+        "take_note":         local_act.take_note,
+        "read_notes":        local_act.read_notes,
+        "clear_notes":       local_act.clear_notes,
+        "get_weather":       local_act.get_weather,
 
         # Developer (gated by DEVELOPER_MODE flag)
         "run_python_file":   dev_act.run_python_file,
@@ -73,10 +85,11 @@ def _activate_mode(mode: str = "", **_) -> None:
 def _help(**_) -> None:
     from utils import speak
     speak(
-        "I can open apps, search the web, control volume, manage files, "
-        "run developer commands, activate modes, and more. "
+        "I can open apps, search the web, play YouTube videos, control volume, "
+        "manage files, run developer commands, check battery and system info, "
+        "calculate math, set timers, save notes, get the weather, and more. "
         "You can also chain commands using 'and', for example: "
-        "open chrome and search for python tutorials."
+        "open chrome and play lo-fi music on YouTube."
     )
 
 
