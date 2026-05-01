@@ -47,10 +47,6 @@ def _query_arg(m: re.Match) -> dict:
 def _file_arg(m: re.Match) -> dict:
     return {"path": m.group("path").strip()}
 
-def _vol_arg(m: re.Match) -> dict:
-    val = m.group("value")
-    return {"value": int(val) if val else None, "direction": m.group(0).split()[0]}
-
 def _mode_arg(m: re.Match) -> dict:
     return {"mode": m.group("mode").strip()}
 
@@ -58,15 +54,38 @@ def _git_arg(m: re.Match) -> dict:
     return {"command": m.group("cmd").strip()}
 
 
+# ---------------------------------------------------------------------------
+# NOTE: Rule ordering matters — more specific patterns MUST precede general
+# ones.  In particular, every specific "open <X>" variant must appear BEFORE
+# the catch-all "open_app" rule at the end of the open-app block.
+# ---------------------------------------------------------------------------
 _RULES: list[tuple[re.Pattern, str, Any]] = [
-    # App control
-    (re.compile(r"\bopen\s+(?P<app>.+)"), "open_app", _app_arg),
-    (re.compile(r"\blaunch\s+(?P<app>.+)"), "open_app", _app_arg),
-    (re.compile(r"\bstart\s+(?P<app>.+)"), "open_app", _app_arg),
-    (re.compile(r"\bclose\s+(?P<app>.+)"), "close_app", _app_arg),
+    # ---- App control (specific variants first, generic last) ----
+    # "open it" / "launch it" / "start it" → reopen the last used app.
+    # These rules are also covered by an exact-string pre-check inside
+    # Brain.parse() (which runs before rule matching), but the rules below
+    # serve as a fallback for any normalised variant the pre-check misses.
     (re.compile(r"\bopen\s+it\b"), "open_last_app", None),
+    (re.compile(r"\blaunch\s+it\b"), "open_last_app", None),
+    (re.compile(r"\bstart\s+it\b"), "open_last_app", None),
+    # URL must be checked before generic open_app.
+    # Use .+ so the full URL (including query string) is captured; the
+    # segment has already been split on " and " / "," by parse_multi, so
+    # there are no other tokens after the URL in a typical voice command.
+    (re.compile(r"\bopen\s+(?P<query>https?://.+)"), "open_url", _query_arg),
+    # File / folder must be checked before generic open_app
+    (re.compile(r"\bopen\s+(?:file|folder)\s+(?P<path>.+)"), "open_file", _file_arg),
+    # VS Code project must be checked before generic open_app
+    (re.compile(r"\bopen\s+project\s+(?P<path>.+)"), "open_vscode_project", _file_arg),
+    # Generic app launcher (catch-all, must be last in this group).
+    # Negative lookaheads for "it" prevent shadowing the open_last_app rules
+    # above — an additional safeguard since the specific rules are ordered first.
+    (re.compile(r"\bopen\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
+    (re.compile(r"\blaunch\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
+    (re.compile(r"\bstart\s+(?!it\b)(?P<app>.+)"), "open_app", _app_arg),
+    (re.compile(r"\bclose\s+(?P<app>.+)"), "close_app", _app_arg),
 
-    # Volume
+    # ---- Volume ----
     (re.compile(r"\b(volume|vol)\s+up\b"), "volume_up", None),
     (re.compile(r"\b(volume|vol)\s+down\b"), "volume_down", None),
     (re.compile(r"\bmute\b"), "mute", None),
@@ -74,41 +93,39 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bset\s+(volume|vol)\s+to\s+(?P<value>\d+)\b"), "set_volume",
      lambda m: {"value": int(m.group("value"))}),
 
-    # System
+    # ---- System ----
     (re.compile(r"\bshutdown\b"), "shutdown", None),
     (re.compile(r"\brestart\b"), "restart", None),
     (re.compile(r"\bsleep\b"), "sleep", None),
     (re.compile(r"\block\b"), "lock", None),
     (re.compile(r"\bscreenshot\b"), "screenshot", None),
 
-    # Files
-    (re.compile(r"\bopen\s+(?:file|folder)\s+(?P<path>.+)"), "open_file", _file_arg),
+    # ---- Files ----
     (re.compile(r"\bdelete\s+(?:file\s+)?(?P<path>.+)"), "delete_file", _file_arg),
     (re.compile(r"\blist\s+(?:files?\s+in\s+)?(?P<path>.+)"), "list_files", _file_arg),
 
-    # Web / browser
+    # ---- Web / browser ----
     (re.compile(r"\bsearch\s+(?:for\s+)?(?P<query>.+)"), "web_search", _query_arg),
     (re.compile(r"\byoutube\s+(?P<query>.+)"), "youtube_search", _query_arg),
+    # "play X on youtube" must come before the generic "play X"
     (re.compile(r"\bplay\s+(?P<query>.+)\s+on\s+youtube\b"), "youtube_search", _query_arg),
     (re.compile(r"\bplay\s+(?P<query>.+)"), "play_media", _query_arg),
-    (re.compile(r"\bopen\s+(?P<query>https?://.+)"), "open_url", _query_arg),
 
-    # Modes / routines
+    # ---- Modes / routines ----
     (re.compile(r"\b(?:activate\s+)?(?P<mode>study|coding|focus)\s+mode\b"), "activate_mode", _mode_arg),
     (re.compile(r"\brun\s+routine\s+(?P<mode>.+)"), "run_routine", _mode_arg),
 
-    # Developer
+    # ---- Developer ----
     (re.compile(r"\brun\s+(?:file\s+)?(?P<path>.+\.py)\b"), "run_python_file", _file_arg),
     (re.compile(r"\bgit\s+(?P<cmd>status|log|pull|push|commit.*)"), "git_command", _git_arg),
-    (re.compile(r"\bopen\s+project\s+(?P<path>.+)"), "open_vscode_project", _file_arg),
 
-    # Memory / info
+    # ---- Memory / info ----
     (re.compile(r"\bwhat\s+(is\s+)?the\s+time\b"), "get_time", None),
     (re.compile(r"\bwhat\s+(is\s+)?the\s+date\b"), "get_date", None),
     (re.compile(r"\bremember\s+that\s+(?P<app>.+)\s+is\s+(?P<path>.+)"), "add_app_mapping",
      lambda m: {"app": m.group("app").strip(), "executable": m.group("path").strip()}),
 
-    # Meta
+    # ---- Meta ----
     (re.compile(r"\bhelp\b"), "help", None),
     (re.compile(r"\bstop\b|\bbye\b|\bexit\b|\bquit\b"), "stop", None),
 ]
