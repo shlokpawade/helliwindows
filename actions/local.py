@@ -21,6 +21,7 @@ from config import BASE_DIR
 from utils import logger, speak
 
 NOTES_FILE = BASE_DIR / "notes.txt"
+MAX_RECENT_NOTES = 5  # number of most-recent notes spoken by read_notes()
 
 # ---------------------------------------------------------------------------
 # Safe math evaluator (no eval(), uses ast)
@@ -47,7 +48,7 @@ def _safe_eval(expr: str) -> float:
     expr = re.sub(r"\bsquared\b", "**2", expr)
     expr = re.sub(r"\bcubed\b", "**3", expr)
     # Keep only characters valid in arithmetic expressions
-    expr = re.sub(r"[^0-9+\-*/().\s*]", "", expr).strip()
+    expr = re.sub(r"[^0-9+\-*/().\s]", "", expr).strip()
 
     def _eval(node: ast.expr) -> float:
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
@@ -135,7 +136,7 @@ class LocalActions:
         if not lines:
             speak("You have no notes yet.")
             return
-        recent = lines[-5:]  # Read up to the last 5 notes
+        recent = lines[-MAX_RECENT_NOTES:]  # Read up to the last MAX_RECENT_NOTES notes
         speak(f"Your recent notes: {'. '.join(recent)}.")
 
     def clear_notes(self) -> None:
