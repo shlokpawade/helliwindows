@@ -1,21 +1,23 @@
 """
 actions/modes.py – Interactive Study / Code mode routines.
 
-When the user activates study or coding mode, this module conducts a
-short multi-turn dialogue to configure the session:
+Whenever the user activates any study/coding/focus mode this module always
+starts by asking "study or code?" so the user can pick their sub-mode.
 
 Study flow
 ----------
-1. Ask what topic to study.
-2. Offer lofi background music on YouTube.
-3. Offer topic-specific study videos on YouTube.
-4. Set system brightness and volume to 50 %.
+1. Ask: "Do you want to study or code?"  → user says "study"
+2. Ask what topic to study.
+3. Offer lofi background music on YouTube.
+4. Offer topic-specific study videos on YouTube.
+5. Set system brightness and volume to 50 %.
 
 Code flow
 ---------
-1. Ask: new project or existing project?
-2. New project  → ask name → create C:\\projects\\<name> → open in VS Code.
-3. Existing     → ask name → locate C:\\projects\\<name> → open in VS Code.
+1. Ask: "Do you want to study or code?"  → user says "code"
+2. Ask: new project or existing project?
+3. New project  → ask name → create C:\\projects\\<name> → open in VS Code.
+4. Existing     → ask name → locate C:\\projects\\<name> → open in VS Code.
 """
 
 from __future__ import annotations
@@ -105,17 +107,8 @@ class ModeActions:
     # ------------------------------------------------------------------
 
     def activate_mode(self, mode: str = "", **_) -> None:
-        """Dispatch to study or code flow based on the recognised mode."""
-        mode_norm = mode.lower().strip()
-        if mode_norm in ("study", "focus"):
-            # Directly enter the study flow
-            self._study_flow()
-        elif mode_norm in ("coding", "code"):
-            # Directly enter the code flow
-            self._code_flow()
-        else:
-            # Generic: ask the user which sub-mode they want
-            self._ask_study_or_code()
+        """Always ask the user whether they want to study or code."""
+        self._ask_study_or_code()
 
     # ------------------------------------------------------------------
     # Internal: ask/listen helper
