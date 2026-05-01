@@ -1,0 +1,32 @@
+{
+    "app_mappings": {
+        "notepad": "notepad.exe",
+        "calculator": "calc.exe",
+        "paint": "mspaint.exe",
+        "chrome": "chrome.exe",
+        "firefox": "firefox.exe",
+        "explorer": "explorer.exe",
+        "task manager": "taskmgr.exe",
+        "vs code": "code",
+        "visual studio code": "code",
+        "spotify": "spotify.exe",
+        "vlc": "vlc.exe",
+        "word": "winword.exe",
+        "excel": "excel.exe",
+        "powerpoint": "powerpnt.exe"
+    },
+    "routines": {
+        "study mode": [
+            {"action": "open_app", "args": {"app": "vs code"}},
+            {"action": "system_control", "args": {"command": "set_volume", "value": 20}}
+        ],
+        "coding mode": [
+            {"action": "open_app", "args": {"app": "vs code"}},
+            {"action": "open_app", "args": {"app": "chrome"}},
+            {"action": "system_control", "args": {"command": "set_volume", "value": 30}}
+        ]
+    },
+    "history": [],
+    "last_action": null,
+    "last_app_opened": null
+}
