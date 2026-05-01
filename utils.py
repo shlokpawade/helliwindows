@@ -71,55 +71,71 @@ def speak(text: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Animations (GUI popups)
+# Animations (screen-edge overlay)
 # ---------------------------------------------------------------------------
 import threading
 import tkinter as tk
-from tkinter import font
 
 
-def _create_animation_window(title: str, text: str, duration: int = 1500) -> None:
-    """Create and show a GUI animation popup window."""
-    def close_window():
-        root.destroy()
-    
+def _show_edge_overlay(color: str, duration: int) -> None:
+    """
+    Display a colourful border around the entire screen for *duration* ms.
+
+    The window is borderless and fullscreen; only the thin coloured edges are
+    visible – the centre is made transparent so the desktop stays usable.
+    Works on Windows via the '-transparentcolor' attribute.
+    """
     root = tk.Tk()
-    root.title(title)
-    root.geometry("400x150")
-    root.attributes('-topmost', True)  # Always on top
-    
-    # Center window on screen
-    root.update_idletasks()
-    x = root.winfo_screenwidth() // 2 - 200
-    y = root.winfo_screenheight() // 2 - 75
-    root.geometry(f"+{x}+{y}")
-    
-    # Styling
-    root.configure(bg='#1e1e1e')
-    label_font = font.Font(size=18, weight='bold')
-    label = tk.Label(root, text=text, font=label_font, fg='#00ff00', bg='#1e1e1e')
-    label.pack(pady=30)
-    
-    # Auto close after duration (ms)
-    root.after(duration, close_window)
+    root.overrideredirect(True)          # no title-bar / decorations
+    root.wm_attributes("-topmost", True) # always on top
+
+    sw = root.winfo_screenwidth()
+    sh = root.winfo_screenheight()
+    root.geometry(f"{sw}x{sh}+0+0")
+
+    # Background colour that will be made fully transparent (centre hole)
+    _TRANSPARENT = "#010101"
+    root.configure(bg=_TRANSPARENT)
+
+    try:
+        root.wm_attributes("-transparentcolor", _TRANSPARENT)
+    except tk.TclError:
+        # Non-Windows platforms may not support this; fall back gracefully.
+        pass
+
+    border = 10  # edge thickness in pixels
+
+    canvas = tk.Canvas(
+        root, width=sw, height=sh,
+        bg=_TRANSPARENT, highlightthickness=0,
+    )
+    canvas.place(x=0, y=0)
+
+    # Draw four edge rectangles in the chosen colour
+    canvas.create_rectangle(0,          0,          sw, border,    fill=color, outline="")
+    canvas.create_rectangle(0,          sh - border, sw, sh,        fill=color, outline="")
+    canvas.create_rectangle(0,          0,          border, sh,     fill=color, outline="")
+    canvas.create_rectangle(sw - border, 0,          sw, sh,        fill=color, outline="")
+
+    root.after(duration, root.destroy)
     root.mainloop()
 
 
 def show_listening_animation() -> None:
-    """Show visual feedback when Jarvis is listening (GUI popup)."""
+    """Show a blue edge overlay while Jarvis is listening."""
     threading.Thread(
-        target=_create_animation_window,
-        args=("Jarvis", "🎤 LISTENING 🎤", 2000),
-        daemon=True
+        target=_show_edge_overlay,
+        args=("#00aaff", 2000),
+        daemon=True,
     ).start()
 
 
 def show_wake_animation() -> None:
-    """Show visual feedback when wake word is detected (GUI popup)."""
+    """Show a green/cyan edge overlay when the wake word is detected."""
     threading.Thread(
-        target=_create_animation_window,
-        args=("Jarvis", "✨ HEY WINDOWS! ✨", 1500),
-        daemon=True
+        target=_show_edge_overlay,
+        args=("#00ffcc", 1500),
+        daemon=True,
     ).start()
 
 

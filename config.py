@@ -94,3 +94,14 @@ STT_AUDIO_GAIN        = float(os.getenv("STT_AUDIO_GAIN", "2.0"))
 # RMS energy below this level is treated as silence.
 # Lower the value if the detector cuts off too early; raise it in noisy rooms.
 STT_SILENCE_THRESHOLD = int(os.getenv("STT_SILENCE_THRESHOLD", "300"))
+
+# ---------------------------------------------------------------------------
+# Whisper (command STT)
+# ---------------------------------------------------------------------------
+# Size of the Whisper model used for command recognition.
+# Options (smallest→largest): "tiny.en", "base.en", "small.en", "medium.en"
+# "base.en" gives a good speed/accuracy trade-off on CPU.
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base.en")
+# BCP-47 language code passed to Whisper. Use "en" for English (fastest).
+# Set to None to let Whisper auto-detect the language.
+WHISPER_LANGUAGE   = os.getenv("WHISPER_LANGUAGE", "en") or None

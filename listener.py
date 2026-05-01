@@ -1,16 +1,16 @@
 """
-listener.py – Offline Speech-to-Text using Vosk.
+listener.py – Command Speech-to-Text using Whisper.
 
-Captures a single utterance from the microphone after the wake word fires
-and returns the recognised text.
+Captures a single utterance from the microphone after the wake word fires,
+then transcribes it with OpenAI Whisper (runs fully offline / on-device).
+Vosk is intentionally NOT used here; it is reserved for wake-word detection.
 """
 
-import json
 import queue
 
 import numpy as np
 import sounddevice as sd
-from vosk import KaldiRecognizer, Model
+import whisper
 
 from config import (
     AUDIO_BLOCK_SIZE,
@@ -18,7 +18,8 @@ from config import (
     MIC_DEVICE_INDEX,
     STT_AUDIO_GAIN,
     STT_SILENCE_THRESHOLD,
-    VOSK_MODEL_PATH,
+    WHISPER_LANGUAGE,
+    WHISPER_MODEL_SIZE,
 )
 from utils import logger, speak
 
@@ -28,47 +29,28 @@ _SILENCE_TIMEOUT = 3.0
 _MAX_LISTEN_DURATION = 15.0
 
 
-def _process_chunk(data: bytes, gain: float) -> tuple[bytes, float]:
-    """
-    Apply gain to PCM int16 audio and compute its RMS energy in one pass.
-
-    Returns (boosted_bytes, rms).  RMS is measured on the *original* signal so
-    that silence detection reflects the true microphone level.
-    """
-    samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-    rms = float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
-    if gain != 1.0:
-        samples = np.clip(samples * gain, -32768, 32767)
-        return samples.astype(np.int16).tobytes(), rms
-    return data, rms
-
-
 class Listener:
-    """Record one utterance and return the transcribed text."""
+    """Record one utterance and return the transcribed text (via Whisper)."""
 
     def __init__(self) -> None:
-        logger.info("Loading Vosk STT model from: %s", VOSK_MODEL_PATH)
-        model = Model(VOSK_MODEL_PATH)
-        self._model = model
-        logger.info("STT listener ready.")
+        logger.info("Loading Whisper model '%s' for command STT …", WHISPER_MODEL_SIZE)
+        self._model = whisper.load_model(WHISPER_MODEL_SIZE)
+        logger.info("Whisper STT listener ready.")
 
     def listen(self) -> str:
         """
-        Open the microphone, record until silence, and return the transcription.
-        Returns an empty string on failure.
+        Open the microphone, record until silence, transcribe with Whisper,
+        and return the recognised text.  Returns an empty string on failure.
         """
         speak("Listening …")
         audio_q: queue.Queue[bytes] = queue.Queue()
-        rec = KaldiRecognizer(self._model, AUDIO_SAMPLE_RATE)
-        rec.SetWords(True)  # include per-word timestamps in results
 
         def _callback(indata, frames, time, status):  # noqa: ANN001
             if status:
                 logger.warning("STT audio status: %s", status)
             audio_q.put(bytes(indata))
 
-        text = ""
-        best_partial = ""
+        all_chunks: list[np.ndarray] = []
         silence_chunks = 0
         started_speaking = False
         max_silence = int(_SILENCE_TIMEOUT * AUDIO_SAMPLE_RATE / AUDIO_BLOCK_SIZE)
@@ -90,9 +72,16 @@ class Listener:
                     break
 
                 total_chunks += 1
-                data, rms = _process_chunk(data, STT_AUDIO_GAIN)
+                samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                rms = float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
 
-                # Energy-based silence detection (independent of Vosk output)
+                # Apply gain for quiet microphones
+                if STT_AUDIO_GAIN != 1.0:
+                    samples = np.clip(samples * STT_AUDIO_GAIN, -32768, 32767)
+
+                all_chunks.append(samples)
+
+                # Energy-based silence detection
                 if rms < STT_SILENCE_THRESHOLD:
                     if started_speaking:
                         silence_chunks += 1
@@ -100,26 +89,20 @@ class Listener:
                     started_speaking = True
                     silence_chunks = 0
 
-                if rec.AcceptWaveform(data):
-                    chunk = json.loads(rec.Result()).get("text", "").strip()
-                    if chunk:
-                        text += (" " + chunk) if text else chunk
-                else:
-                    partial = json.loads(rec.PartialResult()).get("partial", "")
-                    if partial and len(partial) > len(best_partial):
-                        best_partial = partial
-
                 if started_speaking and silence_chunks >= max_silence:
                     break
 
-        # Flush any remaining audio
-        final = json.loads(rec.FinalResult()).get("text", "").strip()
-        if final and final not in text:
-            text += (" " + final) if text else final
+        if not all_chunks:
+            logger.warning("No audio captured.")
+            return ""
 
-        if not text and best_partial:
-            logger.info("STT partial fallback: '%s'", best_partial)
-            text = best_partial
+        # Concatenate all PCM int16 samples and normalise to [-1.0, 1.0] float32
+        audio_np = np.concatenate(all_chunks) / 32768.0
+
+        logger.info("Transcribing %d samples with Whisper …", len(audio_np))
+        result = self._model.transcribe(audio_np, language=WHISPER_LANGUAGE, fp16=False)
+        text = result.get("text", "").strip()
 
         logger.info("STT result: '%s'", text)
-        return text.strip()
+        return text
+
