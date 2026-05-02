@@ -10,7 +10,7 @@ import webbrowser
 
 import requests
 
-from utils import logger, speak
+from utils import logger, speak, speak_async
 
 
 def _get_first_youtube_video_id(query: str) -> str | None:
@@ -47,14 +47,14 @@ class WebActions:
         encoded = urllib.parse.quote_plus(query)
         url = f"https://www.google.com/search?q={encoded}"
         logger.info("Web search: %s", query)
-        speak(f"Searching for {query}.")
+        speak_async(f"Searching for {query} now.")
         webbrowser.open(url)
 
     # ------------------------------------------------------------------
     # YouTube
     # ------------------------------------------------------------------
     def youtube_search(self, query: str) -> None:
-        speak(f"Playing {query} on YouTube.")
+        speak_async(f"Playing {query} on YouTube.")
         video_id = _get_first_youtube_video_id(query)
         if video_id:
             url = f"https://www.youtube.com/watch?v={video_id}&autoplay=1"
@@ -67,7 +67,7 @@ class WebActions:
 
     def play_media(self, query: str) -> None:
         """Play media by finding and opening the first YouTube result."""
-        speak(f"Playing {query}.")
+        speak_async(f"Playing {query}.")
         video_id = _get_first_youtube_video_id(query)
         if video_id:
             url = f"https://www.youtube.com/watch?v={video_id}&autoplay=1"
@@ -84,5 +84,5 @@ class WebActions:
     def open_url(self, query: str) -> None:
         url = query if query.startswith("http") else f"https://{query}"
         logger.info("Opening URL: %s", url)
-        speak(f"Opening {url}.")
+        speak_async(f"Opening {url}.")
         webbrowser.open(url)

@@ -99,8 +99,36 @@ class Listener:
         # Concatenate all PCM int16 samples and normalise to [-1.0, 1.0] float32
         audio_np = np.concatenate(all_chunks) / 32768.0
 
+        # --- Audio pre-processing for better Whisper accuracy ---
+        # 1. Remove DC offset (constant bias from the microphone)
+        audio_np = audio_np - np.mean(audio_np)
+        # 2. Normalise amplitude so quiet utterances are boosted to full scale
+        peak = np.max(np.abs(audio_np))
+        if peak > 1e-6:
+            audio_np = audio_np / peak
+        # 3. Pre-emphasis filter: boost high-frequency components (consonants)
+        #    which Whisper benefits from for clarity.
+        pre_emphasis = 0.97
+        audio_np = np.concatenate(
+            ([audio_np[0]], audio_np[1:] - pre_emphasis * audio_np[:-1])
+        ).astype(np.float32)
+
         logger.info("Transcribing %d samples with Whisper …", len(audio_np))
-        result = self._model.transcribe(audio_np, language=WHISPER_LANGUAGE, fp16=False)
+        result = self._model.transcribe(
+            audio_np,
+            language=WHISPER_LANGUAGE,
+            fp16=False,
+            beam_size=5,
+            best_of=5,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            no_speech_threshold=0.6,
+            compression_ratio_threshold=2.4,
+            initial_prompt=(
+                "Jarvis, hey windows, open, search, play, volume, reminder, "
+                "timer, note, weather, screenshot, shutdown, restart, lock"
+            ),
+        )
         text = result.get("text", "").strip()
 
         logger.info("STT result: '%s'", text)

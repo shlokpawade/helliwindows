@@ -60,10 +60,14 @@ def build_action_registry(memory, listener=None) -> dict:
         # Local utilities
         "calculate":         local_act.calculate,
         "set_timer":         local_act.set_timer,
+        "set_reminder":      local_act.set_reminder,
+        "list_reminders":    local_act.list_reminders,
+        "cancel_reminder":   local_act.cancel_reminder,
         "take_note":         local_act.take_note,
         "read_notes":        local_act.read_notes,
         "clear_notes":       local_act.clear_notes,
         "get_weather":       local_act.get_weather,
+        "read_clipboard":    local_act.read_clipboard,
 
         # Developer (gated by DEVELOPER_MODE flag)
         "run_python_file":   dev_act.run_python_file,
@@ -84,9 +88,11 @@ def _help(**_) -> None:
     speak(
         "I can open apps, search the web, play YouTube videos, control volume, "
         "manage files, run developer commands, check battery and system info, "
-        "calculate math, set timers, save notes, get the weather, and more. "
-        "You can also chain commands using 'and', for example: "
-        "open chrome and play lo-fi music on YouTube."
+        "calculate math, set timers, set reminders, save notes, read the clipboard, "
+        "get the weather, and more. "
+        "You can chain commands using 'and', for example: "
+        "open chrome and play lo-fi music on YouTube. "
+        "For reminders say: remind me in 10 minutes for a meeting."
     )
 
 

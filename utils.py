@@ -4,9 +4,11 @@ utils.py – Shared helpers: logging, text normalisation, TTS, confirmation.
 
 import json
 import logging
+import queue as _queue
 import re
 import subprocess
 import sys
+import threading
 from datetime import datetime
 
 import pyttsx3
@@ -43,46 +45,91 @@ logger = setup_logger()
 
 # ---------------------------------------------------------------------------
 # Text-to-Speech (offline via pyttsx3)
+#
+# Architecture: a single daemon worker thread owns the pyttsx3 engine and
+# processes utterances from a queue.
+#
+#   speak(text)       – enqueue and BLOCK until the utterance finishes.
+#   speak_async(text) – enqueue and RETURN IMMEDIATELY (fire-and-forget).
+#
+# This lets Jarvis announce what it is doing *while* the action executes,
+# rather than waiting for the TTS to finish before starting the work.
 # ---------------------------------------------------------------------------
-_tts_engine = None
+
+# Each queue item is (text: str, done_event: threading.Event | None).
+# A done_event of None means the caller does not wait (speak_async).
+_tts_queue: _queue.Queue = _queue.Queue()
 
 
-def _get_tts():
-    global _tts_engine
-    if _tts_engine is None:
-        _tts_engine = pyttsx3.init()
-        _tts_engine.setProperty("rate", 175)
-        _tts_engine.setProperty("volume", 1.0)
-        # prefer a Windows SAPI voice if available
-        voices = _tts_engine.getProperty("voices")
-        for v in voices:
-            if "zira" in v.name.lower() or "david" in v.name.lower():
-                _tts_engine.setProperty("voice", v.id)
-                break
-    return _tts_engine
+def _tts_worker() -> None:
+    """Dedicated TTS worker thread.  Owns the single pyttsx3 engine instance."""
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 175)
+    engine.setProperty("volume", 1.0)
+    voices = engine.getProperty("voices")
+    for v in voices:
+        if "zira" in v.name.lower() or "david" in v.name.lower():
+            engine.setProperty("voice", v.id)
+            break
+
+    while True:
+        item = _tts_queue.get()
+        if item is None:          # sentinel: shut down
+            _tts_queue.task_done()
+            break
+        text, done_event = item
+        try:
+            engine.say(text)
+            engine.runAndWait()
+        except Exception:         # noqa: BLE001 – never crash the TTS thread
+            pass
+        finally:
+            _tts_queue.task_done()
+            if done_event is not None:
+                done_event.set()
+
+
+# Start the worker immediately at import time so the first speak() is fast.
+_tts_thread = threading.Thread(target=_tts_worker, name="tts-worker", daemon=True)
+_tts_thread.start()
 
 
 def speak(text: str) -> None:
-    """Speak *text* aloud and print it."""
+    """Speak *text* aloud and block until the utterance is fully spoken."""
     logger.info("JARVIS: %s", text)
-    engine = _get_tts()
-    engine.say(text)
-    engine.runAndWait()
+    done = threading.Event()
+    _tts_queue.put((text, done))
+    done.wait()
+
+
+def speak_async(text: str) -> None:
+    """Speak *text* in the background and return immediately.
+
+    Use this when the response announcement should play *simultaneously* with
+    the action being performed (e.g. say "Opening Brave now" while the app
+    is already launching).
+    """
+    logger.info("JARVIS: %s", text)
+    _tts_queue.put((text, None))
 
 
 # ---------------------------------------------------------------------------
 # Animations (screen-edge overlay)
 # ---------------------------------------------------------------------------
-import threading
 import tkinter as tk
 
 
-def _show_edge_overlay(color: str, duration: int) -> None:
+def _show_edge_overlay(
+    color: str,
+    duration: int | None = None,
+    stop_event: "threading.Event | None" = None,
+) -> None:
     """
-    Display a glowing border around the entire screen for *duration* ms.
+    Display a glowing border around the entire screen.
 
-    The window is borderless and fullscreen; only the thin coloured edges are
-    visible – the centre is made transparent so the desktop stays usable.
+    If *duration* (ms) is given the window auto-closes after that many
+    milliseconds.  If *stop_event* is given instead the window stays open
+    until the event is set (used for the persistent listening-light).
     Works on Windows via the '-transparentcolor' attribute.
 
     Visual improvements over a plain solid border:
@@ -185,24 +232,55 @@ def _show_edge_overlay(color: str, duration: int) -> None:
         fill = _safe_hex(r0 * alpha, g0 * alpha, b0 * alpha)
         _draw_rounded_border(inset, width, fill)
 
-    root.after(duration, root.destroy)
+    if duration is not None:
+        root.after(duration, root.destroy)
+    elif stop_event is not None:
+        def _check_stop():
+            if stop_event.is_set():
+                root.destroy()
+                return
+            root.after(100, _check_stop)
+        root.after(100, _check_stop)
+
     root.mainloop()
 
 
 def show_listening_animation() -> None:
-    """Show a blue edge overlay while Jarvis is listening."""
+    """Show a blue edge overlay for a fixed short duration (legacy helper)."""
     threading.Thread(
         target=_show_edge_overlay,
-        args=("#00aaff", 2000),
+        kwargs={"color": "#00aaff", "duration": 2000},
         daemon=True,
     ).start()
+
+
+def start_listening_light() -> threading.Event:
+    """
+    Start a persistent blue edge overlay that stays on until
+    :func:`stop_listening_light` is called.
+
+    Returns the :class:`threading.Event` that must be passed to
+    :func:`stop_listening_light` to dismiss the overlay.
+    """
+    stop_event = threading.Event()
+    threading.Thread(
+        target=_show_edge_overlay,
+        kwargs={"color": "#00aaff", "stop_event": stop_event},
+        daemon=True,
+    ).start()
+    return stop_event
+
+
+def stop_listening_light(stop_event: threading.Event) -> None:
+    """Signal the overlay started by :func:`start_listening_light` to close."""
+    stop_event.set()
 
 
 def show_wake_animation() -> None:
     """Show a green/cyan edge overlay when the wake word is detected."""
     threading.Thread(
         target=_show_edge_overlay,
-        args=("#00ffcc", 1500),
+        kwargs={"color": "#00ffcc", "duration": 1500},
         daemon=True,
     ).start()
 
