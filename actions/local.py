@@ -1,9 +1,9 @@
 """
 actions/local.py – Fully offline local utility actions.
 
-Provides: calculator, countdown timer, notes (take/read/clear), and
-weather lookup via the public wttr.in service (requires internet but
-no API key).
+Provides: calculator, countdown timer, reminders, notes (take/read/clear),
+clipboard read, and weather lookup via the public wttr.in service (requires
+internet but no API key).
 """
 
 import ast
@@ -14,6 +14,7 @@ import time
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import requests
 
@@ -22,6 +23,60 @@ from utils import logger, speak
 
 NOTES_FILE = BASE_DIR / "notes.txt"
 MAX_RECENT_NOTES = 5  # number of most-recent notes spoken by read_notes()
+
+# ---------------------------------------------------------------------------
+# Reminder store (in-memory; thread-safe via lock)
+# ---------------------------------------------------------------------------
+
+class _Reminder(NamedTuple):
+    id: int
+    task: str
+    fire_at: float     # monotonic clock value (time.monotonic())
+    label: str         # human-readable duration string
+
+
+class _ReminderStore:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._reminders: list[_Reminder] = []
+        self._next_id = 1
+
+    def add(self, task: str, total_seconds: int, duration_label: str) -> _Reminder:
+        with self._lock:
+            rid = self._next_id
+            self._next_id += 1
+            r = _Reminder(
+                id=rid,
+                task=task,
+                fire_at=time.monotonic() + total_seconds,
+                label=duration_label,
+            )
+            self._reminders.append(r)
+        return r
+
+    def remove(self, rid: int) -> bool:
+        with self._lock:
+            before = len(self._reminders)
+            self._reminders = [r for r in self._reminders if r.id != rid]
+            return len(self._reminders) < before
+
+    def list_all(self) -> list[_Reminder]:
+        with self._lock:
+            return list(self._reminders)
+
+    def cancel_by_task(self, fragment: str) -> int:
+        """Cancel all reminders whose task contains *fragment*; returns count."""
+        with self._lock:
+            before = len(self._reminders)
+            self._reminders = [
+                r for r in self._reminders
+                if fragment.lower() not in r.task.lower()
+            ]
+            return before - len(self._reminders)
+
+
+_reminder_store = _ReminderStore()
+
 
 # ---------------------------------------------------------------------------
 # Safe math evaluator (no eval(), uses ast)
@@ -114,8 +169,95 @@ class LocalActions:
         threading.Thread(target=_alarm, daemon=True).start()
 
     # ------------------------------------------------------------------
-    # Notes
+    # Reminders
     # ------------------------------------------------------------------
+    @staticmethod
+    def _build_duration_str(minutes: int, seconds: int) -> str:
+        parts = []
+        if minutes:
+            parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+        if seconds:
+            parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
+        return " and ".join(parts) if parts else "0 seconds"
+
+    def set_reminder(self, minutes: int = 0, seconds: int = 0, task: str = "") -> None:
+        """Set a reminder to fire after *minutes*/*seconds* for *task*."""
+        total = int(minutes) * 60 + int(seconds)
+        if total <= 0:
+            speak("Please specify when I should remind you.")
+            return
+
+        task_str = task.strip() or "your reminder"
+        duration_str = self._build_duration_str(int(minutes), int(seconds))
+
+        reminder = _reminder_store.add(task_str, total, duration_str)
+        speak(f"Got it! I'll remind you about '{task_str}' in {duration_str}.")
+        logger.info("Reminder #%d set: '%s' in %d seconds", reminder.id, task_str, total)
+
+        def _fire(rid: int) -> None:
+            time.sleep(total)
+            # Remove from store before speaking (in case it was cancelled)
+            if _reminder_store.remove(rid):
+                speak(f"Reminder! {task_str}.")
+                logger.info("Reminder #%d fired: '%s'", rid, task_str)
+
+        threading.Thread(target=_fire, args=(reminder.id,), daemon=True).start()
+
+    def list_reminders(self) -> None:
+        """Read out all pending reminders."""
+        reminders = _reminder_store.list_all()
+        if not reminders:
+            speak("You have no pending reminders.")
+            return
+        lines = []
+        for r in reminders:
+            remaining = max(0, r.fire_at - time.monotonic())
+            mins, secs = divmod(int(remaining), 60)
+            if mins:
+                time_left = f"{mins} minute{'s' if mins != 1 else ''}"
+                if secs:
+                    time_left += f" and {secs} second{'s' if secs != 1 else ''}"
+            else:
+                time_left = f"{secs} second{'s' if secs != 1 else ''}"
+            lines.append(f"Reminder {r.id}: '{r.task}' in {time_left}")
+        speak(f"You have {len(reminders)} pending reminder{'s' if len(reminders) != 1 else ''}. " +
+              ". ".join(lines) + ".")
+
+    def cancel_reminder(self, task: str = "") -> None:
+        """Cancel reminders matching *task*."""
+        if not task.strip():
+            speak("Please tell me which reminder to cancel.")
+            return
+        count = _reminder_store.cancel_by_task(task.strip())
+        if count:
+            speak(f"Cancelled {count} reminder{'s' if count != 1 else ''} about '{task}'.")
+        else:
+            speak(f"I couldn't find any reminders about '{task}'.")
+
+    # ------------------------------------------------------------------
+    # Clipboard
+    # ------------------------------------------------------------------
+    def read_clipboard(self) -> None:
+        """Read the current clipboard contents aloud."""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["powershell", "-Command", "Get-Clipboard"],
+                capture_output=True, text=True, check=False,
+            )
+            text = result.stdout.strip()
+            if text:
+                # Truncate very long clipboard contents
+                preview = text if len(text) <= 200 else text[:200] + "…"
+                speak(f"Clipboard contains: {preview}")
+                logger.info("Read clipboard: %d chars", len(text))
+            else:
+                speak("The clipboard is empty.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Clipboard read failed: %s", exc)
+            speak("Sorry, I couldn't read the clipboard.")
+
+
     def take_note(self, note: str = "") -> None:
         if not note:
             speak("What would you like me to note?")

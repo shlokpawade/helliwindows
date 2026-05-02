@@ -53,6 +53,17 @@ def _mode_arg(m: re.Match) -> dict:
 def _git_arg(m: re.Match) -> dict:
     return {"command": m.group("cmd").strip()}
 
+def _reminder_arg(m: re.Match) -> dict:
+    """Extract {minutes, seconds, task} from a reminder regex match."""
+    val = int(m.group("value"))
+    unit = m.group("unit")
+    task = m.group("task").strip() if "task" in m.groupdict() else ""
+    if unit.startswith("h"):
+        return {"minutes": val * 60, "seconds": 0, "task": task}
+    if unit.startswith("m"):
+        return {"minutes": val, "seconds": 0, "task": task}
+    return {"minutes": 0, "seconds": val, "task": task}
+
 
 # ---------------------------------------------------------------------------
 # NOTE: Rule ordering matters — more specific patterns MUST precede general
@@ -159,6 +170,32 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bread\s+(?:my\s+)?notes?\b"), "read_notes", None),
     (re.compile(r"\bclear\s+(?:my\s+)?notes?\b"), "clear_notes", None),
 
+    # ---- Reminders ----
+    # "remind me in 10 minutes for / to / about <task>"
+    (re.compile(
+        r"\bremind\s+(?:me\s+)?in\s+(?P<value>\d+)\s*(?P<unit>hour|hr|minute|min|second|sec)s?"
+        r"\s+(?:for\s+|to\s+|about\s+)?(?P<task>.+)"
+    ), "set_reminder", _reminder_arg),
+    # "remind me <task> in 10 minutes" (task-first order)
+    (re.compile(
+        r"\bremind\s+(?:me\s+)?(?:to\s+|about\s+)?(?P<task>.+?)"
+        r"\s+in\s+(?P<value>\d+)\s*(?P<unit>hour|hr|minute|min|second|sec)s?\b"
+    ), "set_reminder", _reminder_arg),
+    # "set a reminder for / in 10 minutes <task>"
+    (re.compile(
+        r"\b(?:set\s+(?:a\s+)?)?reminder\s+(?:for\s+|in\s+)?(?P<value>\d+)\s*(?P<unit>hour|hr|minute|min|second|sec)s?"
+        r"\s+(?:for\s+|to\s+|about\s+)?(?P<task>.+)"
+    ), "set_reminder", _reminder_arg),
+    # "list / show reminders"
+    (re.compile(r"\b(?:list|show)\s+(?:my\s+)?reminders?\b"), "list_reminders", None),
+    # "cancel reminder for <task>"
+    (re.compile(r"\bcancel\s+(?:my\s+)?reminder(?:\s+(?:for|about)\s+)?(?P<task>.+)"),
+     "cancel_reminder", lambda m: {"task": m.group("task").strip()}),
+
+    # ---- Clipboard ----
+    (re.compile(r"\b(?:read|what(?:'s|\s+is)\s+in)\s+(?:my\s+)?clipboard\b"),
+     "read_clipboard", None),
+
     # ---- Weather ----
     (re.compile(r"\bweather\s+(?:in\s+|at\s+|for\s+)?(?P<query>\S.+)"), "get_weather",
      lambda m: {"location": m.group("query").strip()}),
@@ -191,11 +228,17 @@ _LLM_SYSTEM_PROMPT = (
     "- get_date: [{\"intent\": \"get_date\", \"args\": {}}]\n"
     "- screenshot: [{\"intent\": \"screenshot\", \"args\": {}}]\n"
     "- shutdown: [{\"intent\": \"shutdown\", \"args\": {}}]\n"
+    "- set_reminder: [{\"intent\": \"set_reminder\", \"args\": {\"minutes\": 10, \"seconds\": 0, \"task\": \"meeting\"}}]\n"
+    "- list_reminders: [{\"intent\": \"list_reminders\", \"args\": {}}]\n"
+    "- cancel_reminder: [{\"intent\": \"cancel_reminder\", \"args\": {\"task\": \"meeting\"}}]\n"
+    "- read_clipboard: [{\"intent\": \"read_clipboard\", \"args\": {}}]\n"
     "- send_whatsapp_message: [{\"intent\": \"send_whatsapp_message\", \"args\": {\"contact\": \"mummy\", \"message\": \"hey\"}}]\n"
     "- chat_response: [{\"intent\": \"chat_response\", \"args\": {\"message\": \"Elon Musk is ...\"}}]\n"
     "- help: [{\"intent\": \"help\", \"args\": {}}]\n"
     "- stop: [{\"intent\": \"stop\", \"args\": {}}]\n"
-    "\nIf the user asks a general question, return chat_response with a message. "
+    "\nFor reminders, always include minutes (int), seconds (int), and task (string). "
+    "If the user says 'in 2 hours', set minutes=120. "
+    "If the user asks a general question, return chat_response with a message. "
     "If you cannot map to a known command, return [{\"intent\": \"unknown\", \"args\": {}}]."
 )
 

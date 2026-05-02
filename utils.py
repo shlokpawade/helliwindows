@@ -77,12 +77,17 @@ import threading
 import tkinter as tk
 
 
-def _show_edge_overlay(color: str, duration: int) -> None:
+def _show_edge_overlay(
+    color: str,
+    duration: int | None = None,
+    stop_event: "threading.Event | None" = None,
+) -> None:
     """
-    Display a glowing border around the entire screen for *duration* ms.
+    Display a glowing border around the entire screen.
 
-    The window is borderless and fullscreen; only the thin coloured edges are
-    visible – the centre is made transparent so the desktop stays usable.
+    If *duration* (ms) is given the window auto-closes after that many
+    milliseconds.  If *stop_event* is given instead the window stays open
+    until the event is set (used for the persistent listening-light).
     Works on Windows via the '-transparentcolor' attribute.
 
     Visual improvements over a plain solid border:
@@ -185,24 +190,55 @@ def _show_edge_overlay(color: str, duration: int) -> None:
         fill = _safe_hex(r0 * alpha, g0 * alpha, b0 * alpha)
         _draw_rounded_border(inset, width, fill)
 
-    root.after(duration, root.destroy)
+    if duration is not None:
+        root.after(duration, root.destroy)
+    elif stop_event is not None:
+        def _check_stop():
+            if stop_event.is_set():
+                root.destroy()
+                return
+            root.after(100, _check_stop)
+        root.after(100, _check_stop)
+
     root.mainloop()
 
 
 def show_listening_animation() -> None:
-    """Show a blue edge overlay while Jarvis is listening."""
+    """Show a blue edge overlay for a fixed short duration (legacy helper)."""
     threading.Thread(
         target=_show_edge_overlay,
-        args=("#00aaff", 2000),
+        kwargs={"color": "#00aaff", "duration": 2000},
         daemon=True,
     ).start()
+
+
+def start_listening_light() -> threading.Event:
+    """
+    Start a persistent blue edge overlay that stays on until
+    :func:`stop_listening_light` is called.
+
+    Returns the :class:`threading.Event` that must be passed to
+    :func:`stop_listening_light` to dismiss the overlay.
+    """
+    stop_event = threading.Event()
+    threading.Thread(
+        target=_show_edge_overlay,
+        kwargs={"color": "#00aaff", "stop_event": stop_event},
+        daemon=True,
+    ).start()
+    return stop_event
+
+
+def stop_listening_light(stop_event: threading.Event) -> None:
+    """Signal the overlay started by :func:`start_listening_light` to close."""
+    stop_event.set()
 
 
 def show_wake_animation() -> None:
     """Show a green/cyan edge overlay when the wake word is detected."""
     threading.Thread(
         target=_show_edge_overlay,
-        args=("#00ffcc", 1500),
+        kwargs={"color": "#00ffcc", "duration": 1500},
         daemon=True,
     ).start()
 
