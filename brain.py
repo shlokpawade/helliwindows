@@ -152,6 +152,19 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bwhat\s+(?:is|s)\s+(?P<expr>[0-9].+)"),
      "calculate", lambda m: {"expression": m.group("expr").strip()}),
 
+    # ---- Knowledge queries → web search ----
+    # These rules MUST appear after the specific "what is the time/date" and
+    # "what is [digit]" (calculate) rules above so those take priority.
+    (re.compile(r"\bwho\s+(?:is|was|are|were)\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bwhat\s+(?:is|are|was|were)\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bhow\s+(?:do|does|did|can|to)\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\btell\s+me\s+about\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bexplain\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bdefine\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bwhen\s+(?:is|was|did|are|were)\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bwhere\s+(?:is|are|was|were)\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bwhy\s+(?:is|are|was|were|does|do|did)\s+(?P<query>.+)"), "web_search", _query_arg),
+
     # ---- Timer ----
     (re.compile(
         r"\bset\s+(?:a\s+)?(?P<value>\d+)\s*(?P<unit>minute|min|second|sec)s?\s+timer\b"
@@ -419,6 +432,13 @@ class Brain:
         llm_intents = _query_llm(text)
         if llm_intents:
             return llm_intents
+
+        # 3. Smart fallback: treat any multi-word utterance as a web search so
+        #    the user always gets a useful response even without an LLM.
+        norm_text = normalise(text)
+        if len(norm_text.split()) >= 2:
+            logger.info("Unknown intent – falling back to web search for: '%s'", text)
+            return [Intent("web_search", {"query": text}, raw=text, confidence=0.3)]
 
         logger.info("Intent unknown for: '%s'", text)
         return [Intent("unknown", {}, raw=text, confidence=0.0)]
