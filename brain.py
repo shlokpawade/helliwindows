@@ -155,6 +155,11 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # ---- Knowledge queries → web search ----
     # These rules MUST appear after the specific "what is the time/date" and
     # "what is [digit]" (calculate) rules above so those take priority.
+    # Rule ordering guarantees: the calculate rule at line 152 requires the
+    # expression to start with a digit, so "what is 2 plus 2" → calculate,
+    # while "what is Python" (no leading digit) falls through to this rule.
+    # Each segment reaching _parse_rules has already been split on "and"/"," by
+    # parse_multi, so the greedy `(.+)` captures the full remaining query text.
     (re.compile(r"\bwho\s+(?:is|was|are|were)\s+(?P<query>.+)"), "web_search", _query_arg),
     (re.compile(r"\bwhat\s+(?:is|are|was|were)\s+(?P<query>.+)"), "web_search", _query_arg),
     (re.compile(r"\bhow\s+(?:do|does|did|can|to)\s+(?P<query>.+)"), "web_search", _query_arg),
@@ -437,7 +442,7 @@ class Brain:
         #    the user always gets a useful response even without an LLM.
         norm_text = normalise(text)
         if len(norm_text.split()) >= 2:
-            logger.info("Unknown intent – falling back to web search for: '%s'", text)
+            logger.info("Unknown intent - falling back to web search for: '%s'", text)
             return [Intent("web_search", {"query": text}, raw=text, confidence=0.3)]
 
         logger.info("Intent unknown for: '%s'", text)
