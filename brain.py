@@ -58,9 +58,9 @@ def _reminder_arg(m: re.Match) -> dict:
     val = int(m.group("value"))
     unit = m.group("unit")
     task = m.group("task").strip() if "task" in m.groupdict() else ""
-    if unit.startswith("h"):
+    if unit.startswith(("hour", "hr")):
         return {"minutes": val * 60, "seconds": 0, "task": task}
-    if unit.startswith("m"):
+    if unit.startswith(("minute", "min")):
         return {"minutes": val, "seconds": 0, "task": task}
     return {"minutes": 0, "seconds": val, "task": task}
 

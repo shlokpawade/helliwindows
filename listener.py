@@ -109,7 +109,9 @@ class Listener:
         # 3. Pre-emphasis filter: boost high-frequency components (consonants)
         #    which Whisper benefits from for clarity.
         pre_emphasis = 0.97
-        audio_np = np.append(audio_np[0], audio_np[1:] - pre_emphasis * audio_np[:-1]).astype(np.float32)
+        audio_np = np.concatenate(
+            ([audio_np[0]], audio_np[1:] - pre_emphasis * audio_np[:-1])
+        ).astype(np.float32)
 
         logger.info("Transcribing %d samples with Whisper …", len(audio_np))
         result = self._model.transcribe(

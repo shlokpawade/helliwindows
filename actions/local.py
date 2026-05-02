@@ -257,7 +257,9 @@ class LocalActions:
             logger.warning("Clipboard read failed: %s", exc)
             speak("Sorry, I couldn't read the clipboard.")
 
-
+    # ------------------------------------------------------------------
+    # Notes
+    # ------------------------------------------------------------------
     def take_note(self, note: str = "") -> None:
         if not note:
             speak("What would you like me to note?")
