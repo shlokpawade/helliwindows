@@ -2,7 +2,7 @@
 actions/files.py – File manager actions.
 
 Covers: open file/folder, delete file (with confirmation), list directory,
-and teaching new app mappings to memory.
+create folder, and teaching new app mappings to memory.
 """
 
 import os
@@ -10,6 +10,18 @@ import shutil
 from pathlib import Path
 
 from utils import confirm_action, logger, speak
+
+# Common spoken location shortcuts → actual Path objects
+_LOCATION_ALIASES: dict[str, Path] = {
+    "desktop":   Path.home() / "Desktop",
+    "documents": Path.home() / "Documents",
+    "downloads": Path.home() / "Downloads",
+    "pictures":  Path.home() / "Pictures",
+    "videos":    Path.home() / "Videos",
+    "music":     Path.home() / "Music",
+    "home":      Path.home(),
+    "user":      Path.home(),
+}
 
 
 class FileActions:
@@ -67,6 +79,46 @@ class FileActions:
         listing = ", ".join(names)
         suffix = f" and {len(entries) - 10} more" if len(entries) > 10 else ""
         speak(f"In {path}: {listing}{suffix}.")
+
+    # ------------------------------------------------------------------
+    # Create folder
+    # ------------------------------------------------------------------
+    def create_folder(self, name: str, location: str = "") -> None:
+        """Create a new folder *name* inside *location*.
+
+        *location* can be a known alias (e.g. 'desktop', 'documents') or a
+        plain path string.  When omitted the folder is created on the Desktop.
+        """
+        if not name.strip():
+            speak("Please tell me the name for the new folder.")
+            return
+
+        # Resolve base directory
+        loc_key = location.strip().lower()
+        if loc_key in _LOCATION_ALIASES:
+            base = _LOCATION_ALIASES[loc_key]
+        elif location.strip():
+            base = Path(os.path.expandvars(os.path.expanduser(location.strip())))
+        else:
+            base = _LOCATION_ALIASES["desktop"]
+
+        target = base / name.strip()
+        try:
+            # Guard against path traversal (e.g. name = "../secret").
+            # resolve() follows symlinks; is_relative_to() checks ancestry correctly.
+            target = target.resolve()
+            base_resolved = base.resolve()
+            if not target.is_relative_to(base_resolved):
+                speak("That folder name contains an invalid path. Please try again.")
+                return
+            target.mkdir(parents=True, exist_ok=True)
+            logger.info("Created folder: %s", target)
+            speak(f"Folder '{name}' created in {base.name}.")
+        except PermissionError:
+            speak(f"I don't have permission to create a folder in {base}.")
+        except OSError as exc:
+            logger.error("create_folder failed: %s", exc)
+            speak(f"Sorry, I couldn't create the folder. {exc}")
 
     # ------------------------------------------------------------------
     # App mapping

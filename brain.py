@@ -64,12 +64,13 @@ def _reminder_arg(m: re.Match) -> dict:
         return {"minutes": val, "seconds": 0, "task": task}
     return {"minutes": 0, "seconds": val, "task": task}
 
+def _folder_with_location_arg(m: re.Match) -> dict:
+    return {"name": m.group("name").strip(), "location": m.group("location").strip()}
 
-# ---------------------------------------------------------------------------
-# NOTE: Rule ordering matters — more specific patterns MUST precede general
-# ones.  In particular, every specific "open <X>" variant must appear BEFORE
-# the catch-all "open_app" rule at the end of the open-app block.
-# ---------------------------------------------------------------------------
+def _folder_name_arg(m: re.Match) -> dict:
+    return {"name": m.group("name").strip(), "location": ""}
+
+
 _RULES: list[tuple[re.Pattern, str, Any]] = [
     # ---- App control (specific variants first, generic last) ----
     # "open it" / "launch it" / "start it" → reopen the last used app.
@@ -112,6 +113,16 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bscreenshot\b"), "screenshot", None),
 
     # ---- Files ----
+    # create_folder must precede delete/list so "create folder" isn't swallowed.
+    (re.compile(
+        r"\b(?:create|make)\s+(?:a\s+)?(?:new\s+)?folder\s+"
+        r"(?:named?\s+|called\s+)?(?P<name>.+?)"
+        r"\s+(?:in|at|on|inside)\s+(?P<location>.+)"
+    ), "create_folder", _folder_with_location_arg),
+    (re.compile(
+        r"\b(?:create|make)\s+(?:a\s+)?(?:new\s+)?folder\s+"
+        r"(?:named?\s+|called\s+)?(?P<name>.+)"
+    ), "create_folder", _folder_name_arg),
     (re.compile(r"\bdelete\s+(?:file\s+)?(?P<path>.+)"), "delete_file", _file_arg),
     (re.compile(r"\blist\s+(?:files?\s+in\s+)?(?P<path>.+)"), "list_files", _file_arg),
 
@@ -152,7 +163,7 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bwhat\s+(?:is|s)\s+(?P<expr>[0-9].+)"),
      "calculate", lambda m: {"expression": m.group("expr").strip()}),
 
-    # ---- Knowledge queries → web search ----
+    # ---- Knowledge queries → answered directly by LLM (phi3:mini) ----
     # These rules MUST appear after the specific "what is the time/date" and
     # "what is [digit]" (calculate) rules above so those take priority.
     # Rule ordering guarantees: the calculate rule at line 152 requires the
@@ -160,15 +171,15 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # while "what is Python" (no leading digit) falls through to this rule.
     # Each segment reaching _parse_rules has already been split on "and"/"," by
     # parse_multi, so the greedy `(.+)` captures the full remaining query text.
-    (re.compile(r"\bwho\s+(?:is|was|are|were)\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bwhat\s+(?:is|are|was|were)\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bhow\s+(?:do|does|did|can|to)\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\btell\s+me\s+about\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bexplain\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bdefine\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bwhen\s+(?:is|was|did|are|were)\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bwhere\s+(?:is|are|was|were)\s+(?P<query>.+)"), "web_search", _query_arg),
-    (re.compile(r"\bwhy\s+(?:is|are|was|were|does|do|did)\s+(?P<query>.+)"), "web_search", _query_arg),
+    (re.compile(r"\bwho\s+(?:is|was|are|were)\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bwhat\s+(?:is|are|was|were)\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bhow\s+(?:do|does|did|can|to)\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\btell\s+me\s+about\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bexplain\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bdefine\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bwhen\s+(?:is|was|did|are|were)\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bwhere\s+(?:is|are|was|were)\s+(?P<query>.+)"), "ask_llm", _query_arg),
+    (re.compile(r"\bwhy\s+(?:is|are|was|were|does|do|did)\s+(?P<query>.+)"), "ask_llm", _query_arg),
 
     # ---- Timer ----
     (re.compile(
@@ -246,17 +257,20 @@ _LLM_SYSTEM_PROMPT = (
     "- get_date: [{\"intent\": \"get_date\", \"args\": {}}]\n"
     "- screenshot: [{\"intent\": \"screenshot\", \"args\": {}}]\n"
     "- shutdown: [{\"intent\": \"shutdown\", \"args\": {}}]\n"
+    "- create_folder: [{\"intent\": \"create_folder\", \"args\": {\"name\": \"Photos\", \"location\": \"desktop\"}}]\n"
     "- set_reminder: [{\"intent\": \"set_reminder\", \"args\": {\"minutes\": 10, \"seconds\": 0, \"task\": \"meeting\"}}]\n"
     "- list_reminders: [{\"intent\": \"list_reminders\", \"args\": {}}]\n"
     "- cancel_reminder: [{\"intent\": \"cancel_reminder\", \"args\": {\"task\": \"meeting\"}}]\n"
     "- read_clipboard: [{\"intent\": \"read_clipboard\", \"args\": {}}]\n"
     "- send_whatsapp_message: [{\"intent\": \"send_whatsapp_message\", \"args\": {\"contact\": \"mummy\", \"message\": \"hey\"}}]\n"
+    "- ask_llm: [{\"intent\": \"ask_llm\", \"args\": {\"query\": \"who is Elon Musk\"}}]\n"
     "- chat_response: [{\"intent\": \"chat_response\", \"args\": {\"message\": \"Elon Musk is ...\"}}]\n"
     "- help: [{\"intent\": \"help\", \"args\": {}}]\n"
     "- stop: [{\"intent\": \"stop\", \"args\": {}}]\n"
     "\nFor reminders, always include minutes (int), seconds (int), and task (string). "
     "If the user says 'in 2 hours', set minutes=120. "
-    "If the user asks a general question, return chat_response with a message. "
+    "If the user asks who/what/where/when/why/how about a person, place, or concept, return ask_llm. "
+    "If the user wants to create or make a new folder, return create_folder. "
     "If you cannot map to a known command, return [{\"intent\": \"unknown\", \"args\": {}}]."
 )
 
@@ -388,6 +402,72 @@ def _query_llm(text: str) -> list[Intent] | None:
         return None
     except Exception as exc:  # noqa: BLE001
         logger.error("LLM fallback failed: %s", exc, exc_info=True)
+        return None
+
+
+_LLM_ANSWER_PROMPT = (
+    "You are Jarvis, a helpful voice assistant. "
+    "Answer the user's question concisely in 2-3 sentences. "
+    "Do not use markdown, bullet points, headers, or special characters. "
+    "Respond in plain English suitable for text-to-speech."
+)
+
+
+def query_llm_direct(question: str) -> str | None:
+    """
+    Ask phi3:mini (or the configured Ollama model) for a plain-text answer.
+
+    Returns the answer string, or None if the LLM is unavailable or fails.
+    This function is intentionally separate from _query_llm which is only
+    used for structured intent parsing.
+    """
+    if not USE_LOCAL_LLM:
+        return None
+
+    endpoint = OLLAMA_URL.rstrip("/")
+    # Always use the chat/completions endpoint for conversational queries.
+    if not endpoint.endswith("/chat/completions"):
+        for suffix in ("/api/generate", "/v1/completions", "/completions", "/generate"):
+            if endpoint.endswith(suffix):
+                endpoint = endpoint[: -len(suffix)]
+                break
+        endpoint = f"{endpoint}/v1/chat/completions"
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {"role": "system", "content": _LLM_ANSWER_PROMPT},
+            {"role": "user", "content": question},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 200,
+    }
+
+    logger.debug("query_llm_direct: %s (model=%s)", question[:60], OLLAMA_MODEL)
+    try:
+        resp = requests.post(endpoint, json=payload, timeout=OLLAMA_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and "choices" in data and data["choices"]:
+            msg = data["choices"][0].get("message", {})
+            answer = msg.get("content", "").strip()
+            if answer:
+                logger.info("LLM direct answer (%d chars)", len(answer))
+                return answer
+        if isinstance(data, dict) and "response" in data:
+            answer = data["response"].strip()
+            if answer:
+                return answer
+        logger.warning("query_llm_direct: empty response from LLM")
+        return None
+    except requests.Timeout:
+        logger.error("query_llm_direct timeout for: %s", question[:60])
+        return None
+    except requests.ConnectionError as exc:
+        logger.error("query_llm_direct connection error: %s", exc)
+        return None
+    except Exception as exc:  # noqa: BLE001
+        logger.error("query_llm_direct failed: %s", exc, exc_info=True)
         return None
 
 

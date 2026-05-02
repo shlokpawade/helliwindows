@@ -9,6 +9,8 @@ Developer-mode actions (run Python files, git, VS Code) live in actions/dev.py.
 
 import os
 import subprocess
+import urllib.parse
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -175,6 +177,25 @@ class SystemActions:
     def chat_response(self, message: str) -> None:
         """Speak a general information response from the LLM."""
         speak(message)
+
+    def ask_llm(self, query: str) -> None:
+        """Answer a knowledge question using phi3:mini directly, without opening the browser.
+
+        Falls back to a web search only if the local LLM is unavailable.
+        """
+        from brain import query_llm_direct  # local import – avoids circular dependency
+
+        logger.info("ask_llm: %s", query)
+        speak_async("Let me check that for you.")
+        answer = query_llm_direct(query)
+        if answer:
+            speak(answer)
+        else:
+            # LLM unavailable – open browser as a last resort
+            logger.info("ask_llm: LLM unavailable, falling back to web search for '%s'", query)
+            encoded = urllib.parse.quote_plus(query)
+            webbrowser.open(f"https://www.google.com/search?q={encoded}")
+            speak(f"I couldn't answer that directly. Opening a web search for {query}.")
 
     # ------------------------------------------------------------------
     # Battery / system info
