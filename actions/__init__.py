@@ -44,11 +44,13 @@ def build_action_registry(memory, listener=None) -> dict:
         "get_system_info":   sys_act.get_system_info,
         "send_whatsapp_message": sys_act.send_whatsapp_message,
         "chat_response":     sys_act.chat_response,
+        "ask_llm":           sys_act.ask_llm,
 
         # Files
         "open_file":         file_act.open_file,
         "delete_file":       file_act.delete_file,
         "list_files":        file_act.list_files,
+        "create_folder":     file_act.create_folder,
         "add_app_mapping":   file_act.add_app_mapping,
 
         # Web
@@ -87,12 +89,12 @@ def _help(**_) -> None:
     from utils import speak
     speak(
         "I can open apps, search the web, play YouTube videos, control volume, "
-        "manage files, run developer commands, check battery and system info, "
+        "manage files, create folders, run developer commands, check battery and system info, "
         "calculate math, set timers, set reminders, save notes, read the clipboard, "
         "get the weather, and more. "
-        "You can ask me questions: say 'who is Elon Musk', 'what is Python', "
-        "'how does a CPU work', 'explain quantum computing', or anything else – "
-        "I'll search the web for you if I'm not sure. "
+        "For knowledge questions say 'who is Elon Musk', 'what is Python', "
+        "'how does a CPU work', 'explain quantum computing' – I'll answer directly using AI. "
+        "To create a folder say: 'create folder Photos in Desktop' or 'make a new folder called Projects in Documents'. "
         "You can chain commands using 'and', for example: "
         "open chrome and play lo-fi music on YouTube. "
         "For reminders say: remind me in 10 minutes for a meeting."
