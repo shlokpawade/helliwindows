@@ -116,7 +116,7 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # create_folder must precede delete/list so "create folder" isn't swallowed.
     (re.compile(
         r"\b(?:create|make)\s+(?:a\s+)?(?:new\s+)?folder\s+"
-        r"(?:named?\s+|called\s+)?(?P<name>\S+)"
+        r"(?:named?\s+|called\s+)?(?P<name>.+?)"
         r"\s+(?:in|at|on|inside)\s+(?P<location>.+)"
     ), "create_folder", _folder_with_location_arg),
     (re.compile(
@@ -425,12 +425,13 @@ def query_llm_direct(question: str) -> str | None:
         return None
 
     endpoint = OLLAMA_URL.rstrip("/")
-    if not (endpoint.endswith("/chat/completions") or endpoint.endswith("/completions")):
-        endpoint = f"{OLLAMA_URL.rstrip('/')}"
-        # Normalise to the chat completions endpoint
-        if not endpoint.endswith("/chat/completions"):
-            base = endpoint.rsplit("/", 1)[0] if endpoint.endswith(("/generate", "/completions")) else endpoint
-            endpoint = f"{base}/chat/completions"
+    # Always use the chat/completions endpoint for conversational queries.
+    if not endpoint.endswith("/chat/completions"):
+        for suffix in ("/api/generate", "/v1/completions", "/completions", "/generate"):
+            if endpoint.endswith(suffix):
+                endpoint = endpoint[: -len(suffix)]
+                break
+        endpoint = f"{endpoint}/v1/chat/completions"
 
     payload = {
         "model": OLLAMA_MODEL,

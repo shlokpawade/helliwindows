@@ -104,6 +104,12 @@ class FileActions:
 
         target = base / name.strip()
         try:
+            # Guard against path traversal (e.g. name = "../secret")
+            target = target.resolve()
+            base_resolved = base.resolve()
+            if not str(target).startswith(str(base_resolved)):
+                speak("That folder name contains an invalid path. Please try again.")
+                return
             target.mkdir(parents=True, exist_ok=True)
             logger.info("Created folder: %s", target)
             speak(f"Folder '{name}' created in {base.name}.")
