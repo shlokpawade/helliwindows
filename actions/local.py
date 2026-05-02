@@ -9,6 +9,7 @@ internet but no API key).
 import ast
 import operator
 import re
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -240,7 +241,6 @@ class LocalActions:
     def read_clipboard(self) -> None:
         """Read the current clipboard contents aloud."""
         try:
-            import subprocess
             result = subprocess.run(
                 ["powershell", "-Command", "Get-Clipboard"],
                 capture_output=True, text=True, check=False,

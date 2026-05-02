@@ -79,7 +79,7 @@ class SystemActions:
                 except psutil.AccessDenied:
                     logger.warning("Access denied closing %s", proc.info["name"])
         if killed:
-            speak_async(f"Closing {app}.")
+            speak_async(f"Closed {app}.")
         else:
             speak(f"I couldn't find {app} running.")
 
