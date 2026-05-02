@@ -118,6 +118,39 @@ def speak_async(text: str) -> None:
 # ---------------------------------------------------------------------------
 import tkinter as tk
 
+# ---------------------------------------------------------------------------
+# Single-threaded Tkinter root
+#
+# Tkinter is NOT thread-safe.  Creating a tk.Tk() in a background thread
+# causes "Tcl_AsyncDelete: async handler deleted by the wrong thread".
+#
+# Fix: one invisible tk.Tk root lives permanently in its own dedicated daemon
+# thread ("tk-gui").  All overlay windows are tk.Toplevel children of that
+# root and are created by scheduling via root.after(), which is the only
+# thread-safe Tkinter API.
+# ---------------------------------------------------------------------------
+
+_tk_root: "tk.Tk | None" = None
+_tk_ready = threading.Event()
+
+
+def _tk_bootstrap() -> None:
+    global _tk_root
+    _tk_root = tk.Tk()
+    _tk_root.withdraw()           # invisible placeholder – never shown
+    _tk_root.overrideredirect(True)
+    _tk_ready.set()
+    try:
+        _tk_root.mainloop()
+    except Exception:             # noqa: BLE001
+        pass
+
+
+_tk_gui_thread = threading.Thread(target=_tk_bootstrap, name="tk-gui", daemon=True)
+_tk_gui_thread.start()
+if not _tk_ready.wait(timeout=5):
+    logger.warning("tk-gui thread did not start in time; screen overlays will be disabled.")
+
 
 def _show_edge_overlay(
     color: str,
@@ -125,133 +158,114 @@ def _show_edge_overlay(
     stop_event: "threading.Event | None" = None,
 ) -> None:
     """
-    Display a glowing border around the entire screen.
+    Schedule a glowing border overlay on the tk-gui thread.
+
+    This function is safe to call from *any* thread.  The actual Tk work
+    runs inside the tk-gui event loop via after(), which avoids the
+    Tcl_AsyncDelete cross-thread error.
 
     If *duration* (ms) is given the window auto-closes after that many
-    milliseconds.  If *stop_event* is given instead the window stays open
-    until the event is set (used for the persistent listening-light).
-    Works on Windows via the '-transparentcolor' attribute.
-
-    Visual improvements over a plain solid border:
-    - Rounded corners drawn with arcs.
-    - Inner glow: multiple concentric bands that fade as they move into the
-      screen, simulating a soft light emission from the edge.
+    milliseconds.  If *stop_event* is given the window stays open until
+    the event is set (used for the persistent listening-light).
     """
-    root = tk.Tk()
-    root.overrideredirect(True)          # no title-bar / decorations
-    root.wm_attributes("-topmost", True) # always on top
+    if _tk_root is None:
+        return
 
-    sw = root.winfo_screenwidth()
-    sh = root.winfo_screenheight()
-    root.geometry(f"{sw}x{sh}+0+0")
+    def _build() -> None:
+        top = tk.Toplevel(_tk_root)
+        top.overrideredirect(True)
+        top.wm_attributes("-topmost", True)
 
-    # Background colour that will be made fully transparent (centre hole)
-    _TRANSPARENT = "#010101"
-    root.configure(bg=_TRANSPARENT)
+        sw = top.winfo_screenwidth()
+        sh = top.winfo_screenheight()
+        top.geometry(f"{sw}x{sh}+0+0")
 
-    try:
-        root.wm_attributes("-transparentcolor", _TRANSPARENT)
-    except tk.TclError:
-        # Non-Windows platforms may not support this; fall back gracefully.
-        pass
+        _TRANSPARENT = "#010101"
+        top.configure(bg=_TRANSPARENT)
 
-    canvas = tk.Canvas(
-        root, width=sw, height=sh,
-        bg=_TRANSPARENT, highlightthickness=0,
-    )
-    canvas.place(x=0, y=0)
+        try:
+            top.wm_attributes("-transparentcolor", _TRANSPARENT)
+        except tk.TclError:
+            pass
 
-    # Parse the base colour into RGB components.
-    c = color.lstrip("#")
-    r0, g0, b0 = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+        canvas = tk.Canvas(
+            top, width=sw, height=sh,
+            bg=_TRANSPARENT, highlightthickness=0,
+        )
+        canvas.place(x=0, y=0)
 
-    corner_r = 22  # radius for rounded corners (pixels)
-    _MIN_CORNER_R = 4   # minimum corner radius to keep arcs visible
-    _MIN_RGB = 2        # minimum RGB component value to avoid the transparent bg colour
+        c = color.lstrip("#")
+        r0, g0, b0 = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
 
-    def _safe_hex(r: float, g: float, b: float) -> str:
-        """Clamp and format an RGB triple as a hex colour string.
+        corner_r = 22
+        _MIN_CORNER_R = 4
+        _MIN_RGB = 2
 
-        Avoids the reserved transparent background colour.
-        """
-        ri = max(_MIN_RGB, min(255, int(r)))
-        gi = max(_MIN_RGB, min(255, int(g)))
-        bi = max(_MIN_RGB, min(255, int(b)))
-        h = f"#{ri:02x}{gi:02x}{bi:02x}"
-        return h if h != _TRANSPARENT else "#020202"
+        def _safe_hex(r: float, g: float, b: float) -> str:
+            ri = max(_MIN_RGB, min(255, int(r)))
+            gi = max(_MIN_RGB, min(255, int(g)))
+            bi = max(_MIN_RGB, min(255, int(b)))
+            h = f"#{ri:02x}{gi:02x}{bi:02x}"
+            return h if h != _TRANSPARENT else "#020202"
 
-    def _draw_rounded_border(inset: int, width: int, fill: str) -> None:
-        """Draw one rounded-rectangle border band at *inset* pixels from the
-        screen edge, using *width* as the band thickness and *fill* as colour.
+        def _draw_rounded_border(inset: int, width: int, fill: str) -> None:
+            x0, y0 = inset, inset
+            x1, y1 = sw - inset, sh - inset
+            cr = max(_MIN_CORNER_R, corner_r - inset // 2)
+            arc_d = cr * 2
 
-        The border is composed of four straight segments (top/bottom/left/right)
-        connected by quarter-circle arcs at each corner.
-        """
-        x0, y0 = inset, inset
-        x1, y1 = sw - inset, sh - inset
-        cr = max(_MIN_CORNER_R, corner_r - inset // 2)   # corner radius shrinks as inset grows
-        arc_d = cr * 2
+            canvas.create_rectangle(
+                x0 + cr, y0,         x1 - cr, y0 + width, fill=fill, outline="")  # top
+            canvas.create_rectangle(
+                x0 + cr, y1 - width, x1 - cr, y1,         fill=fill, outline="")  # bottom
+            canvas.create_rectangle(
+                x0,      y0 + cr,    x0 + width, y1 - cr, fill=fill, outline="")  # left
+            canvas.create_rectangle(
+                x1 - width, y0 + cr, x1, y1 - cr,         fill=fill, outline="")  # right
 
-        # Straight segments (skip the corner areas so arcs can close them)
-        canvas.create_rectangle(
-            x0 + cr, y0,         x1 - cr, y0 + width, fill=fill, outline="")  # top
-        canvas.create_rectangle(
-            x0 + cr, y1 - width, x1 - cr, y1,         fill=fill, outline="")  # bottom
-        canvas.create_rectangle(
-            x0,      y0 + cr,    x0 + width, y1 - cr, fill=fill, outline="")  # left
-        canvas.create_rectangle(
-            x1 - width, y0 + cr, x1, y1 - cr,         fill=fill, outline="")  # right
+            canvas.create_arc(
+                x0, y0, x0 + arc_d, y0 + arc_d,
+                start=90, extent=90, outline=fill, width=width, style=tk.ARC)   # top-left
+            canvas.create_arc(
+                x1 - arc_d, y0, x1, y0 + arc_d,
+                start=0, extent=90, outline=fill, width=width, style=tk.ARC)    # top-right
+            canvas.create_arc(
+                x1 - arc_d, y1 - arc_d, x1, y1,
+                start=270, extent=90, outline=fill, width=width, style=tk.ARC)  # bottom-right
+            canvas.create_arc(
+                x0, y1 - arc_d, x0 + arc_d, y1,
+                start=180, extent=90, outline=fill, width=width, style=tk.ARC)  # bottom-left
 
-        # Quarter-circle arcs at each corner (ARC style = outline only)
-        canvas.create_arc(
-            x0, y0, x0 + arc_d, y0 + arc_d,
-            start=90, extent=90, outline=fill, width=width, style=tk.ARC)   # top-left
-        canvas.create_arc(
-            x1 - arc_d, y0, x1, y0 + arc_d,
-            start=0, extent=90, outline=fill, width=width, style=tk.ARC)    # top-right
-        canvas.create_arc(
-            x1 - arc_d, y1 - arc_d, x1, y1,
-            start=270, extent=90, outline=fill, width=width, style=tk.ARC)  # bottom-right
-        canvas.create_arc(
-            x0, y1 - arc_d, x0 + arc_d, y1,
-            start=180, extent=90, outline=fill, width=width, style=tk.ARC)  # bottom-left
+        _GLOW_LAYERS: list[tuple[int, int, float]] = [
+            (18, 7, 0.06),
+            (13, 6, 0.14),
+            (9,  5, 0.28),
+            (6,  4, 0.50),
+            (3,  3, 0.75),
+            (1,  3, 1.00),
+        ]
 
-    # Glow layers drawn from the faintest (most inward) to the brightest (at
-    # the screen edge).  Each entry: (inset_px, band_width_px, colour_alpha).
-    # Later draws sit on top of earlier ones, so the core line is always on top.
-    _GLOW_LAYERS: list[tuple[int, int, float]] = [
-        (18, 7, 0.06),   # outermost glow – very faint, wide band
-        (13, 6, 0.14),
-        (9,  5, 0.28),
-        (6,  4, 0.50),
-        (3,  3, 0.75),
-        (1,  3, 1.00),   # core bright line at the screen edge
-    ]
+        for inset, width, alpha in _GLOW_LAYERS:
+            fill = _safe_hex(r0 * alpha, g0 * alpha, b0 * alpha)
+            _draw_rounded_border(inset, width, fill)
 
-    for inset, width, alpha in _GLOW_LAYERS:
-        fill = _safe_hex(r0 * alpha, g0 * alpha, b0 * alpha)
-        _draw_rounded_border(inset, width, fill)
+        if duration is not None:
+            top.after(duration, top.destroy)
+        elif stop_event is not None:
+            def _check_stop() -> None:
+                if stop_event.is_set():
+                    top.destroy()
+                    return
+                top.after(100, _check_stop)
+            top.after(100, _check_stop)
 
-    if duration is not None:
-        root.after(duration, root.destroy)
-    elif stop_event is not None:
-        def _check_stop():
-            if stop_event.is_set():
-                root.destroy()
-                return
-            root.after(100, _check_stop)
-        root.after(100, _check_stop)
-
-    root.mainloop()
+    # Schedule _build to run inside the tk-gui event loop (thread-safe).
+    _tk_root.after(0, _build)
 
 
 def show_listening_animation() -> None:
     """Show a blue edge overlay for a fixed short duration (legacy helper)."""
-    threading.Thread(
-        target=_show_edge_overlay,
-        kwargs={"color": "#00aaff", "duration": 2000},
-        daemon=True,
-    ).start()
+    _show_edge_overlay(color="#00aaff", duration=2000)
 
 
 def start_listening_light() -> threading.Event:
@@ -263,11 +277,7 @@ def start_listening_light() -> threading.Event:
     :func:`stop_listening_light` to dismiss the overlay.
     """
     stop_event = threading.Event()
-    threading.Thread(
-        target=_show_edge_overlay,
-        kwargs={"color": "#00aaff", "stop_event": stop_event},
-        daemon=True,
-    ).start()
+    _show_edge_overlay(color="#00aaff", stop_event=stop_event)
     return stop_event
 
 
@@ -278,11 +288,7 @@ def stop_listening_light(stop_event: threading.Event) -> None:
 
 def show_wake_animation() -> None:
     """Show a green/cyan edge overlay when the wake word is detected."""
-    threading.Thread(
-        target=_show_edge_overlay,
-        kwargs={"color": "#00ffcc", "duration": 1500},
-        daemon=True,
-    ).start()
+    _show_edge_overlay(color="#00ffcc", duration=1500)
 
 
 # ---------------------------------------------------------------------------

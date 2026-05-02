@@ -73,11 +73,13 @@ class Listener:
 
                 total_chunks += 1
                 samples = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                rms = float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
 
-                # Apply gain for quiet microphones
+                # Apply gain before energy check so silence detection uses
+                # the same amplitude level that Whisper will receive.
                 if STT_AUDIO_GAIN != 1.0:
                     samples = np.clip(samples * STT_AUDIO_GAIN, -32768, 32767)
+
+                rms = float(np.sqrt(np.mean(samples ** 2))) if samples.size else 0.0
 
                 all_chunks.append(samples)
 
@@ -96,8 +98,21 @@ class Listener:
             logger.warning("No audio captured.")
             return ""
 
-        # Concatenate all PCM int16 samples and normalise to [-1.0, 1.0] float32
+        # Concatenate all PCM samples (already gain-adjusted) and normalise to [-1.0, 1.0]
         audio_np = np.concatenate(all_chunks) / 32768.0
+
+        # --- Trim leading silence so Whisper starts from real speech ---
+        # Find the first chunk index that exceeds the silence threshold.
+        # all_chunks is guaranteed non-empty (guarded above).
+        first_speech = 0
+        for i, chunk in enumerate(all_chunks):
+            chunk_rms = float(np.sqrt(np.mean(chunk ** 2))) if chunk.size else 0.0
+            if chunk_rms >= STT_SILENCE_THRESHOLD:
+                first_speech = i
+                break
+        # Always re-normalise from the (possibly trimmed) slice so the result
+        # is consistently float32 in [-1.0, 1.0] regardless of first_speech.
+        audio_np = np.concatenate(all_chunks[first_speech:]) / 32768.0
 
         # --- Audio pre-processing for better Whisper accuracy ---
         # 1. Remove DC offset (constant bias from the microphone)
@@ -122,11 +137,13 @@ class Listener:
             best_of=5,
             temperature=0.0,
             condition_on_previous_text=False,
-            no_speech_threshold=0.6,
+            no_speech_threshold=0.5,
             compression_ratio_threshold=2.4,
+            suppress_tokens=[],   # do not suppress any tokens; keeps all words
             initial_prompt=(
-                "Jarvis, hey windows, open, search, play, volume, reminder, "
-                "timer, note, weather, screenshot, shutdown, restart, lock"
+                "Windows assistant commands: open, search, play, pause, "
+                "volume up, volume down, reminder, timer, note, weather, "
+                "screenshot, shutdown, restart, lock, close, minimize."
             ),
         )
         text = result.get("text", "").strip()
