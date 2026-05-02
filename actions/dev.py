@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from config import DEVELOPER_MODE, VSCODE_PATH
-from utils import logger, run_command, speak
+from utils import logger, run_command, speak, speak_async
 
 # Characters that must not appear in paths or git sub-commands
 _UNSAFE_CHARS = set(';&|<>`$\'"\\')
@@ -45,7 +45,7 @@ class DevActions:
             speak("That file path contains unsafe characters.")
             return
 
-        speak(f"Running {resolved.name}.")
+        speak_async(f"Running {resolved.name}.")
         logger.info("Running Python file: %s", resolved)
         run_command([sys.executable, str(resolved)])
 
@@ -80,7 +80,7 @@ class DevActions:
             speak("Developer mode is disabled.")
             return
 
-        speak(f"Opening {path} in VS Code.")
+        speak_async(f"Opening {path} in VS Code.")
         logger.info("Opening VS Code project: %s", path)
         try:
             subprocess.Popen([VSCODE_PATH, path], shell=False)  # noqa: S603

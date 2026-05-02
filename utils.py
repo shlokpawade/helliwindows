@@ -4,9 +4,11 @@ utils.py – Shared helpers: logging, text normalisation, TTS, confirmation.
 
 import json
 import logging
+import queue as _queue
 import re
 import subprocess
 import sys
+import threading
 from datetime import datetime
 
 import pyttsx3
@@ -43,37 +45,77 @@ logger = setup_logger()
 
 # ---------------------------------------------------------------------------
 # Text-to-Speech (offline via pyttsx3)
+#
+# Architecture: a single daemon worker thread owns the pyttsx3 engine and
+# processes utterances from a queue.
+#
+#   speak(text)       – enqueue and BLOCK until the utterance finishes.
+#   speak_async(text) – enqueue and RETURN IMMEDIATELY (fire-and-forget).
+#
+# This lets Jarvis announce what it is doing *while* the action executes,
+# rather than waiting for the TTS to finish before starting the work.
 # ---------------------------------------------------------------------------
-_tts_engine = None
+
+# Each queue item is (text: str, done_event: threading.Event | None).
+# A done_event of None means the caller does not wait (speak_async).
+_tts_queue: _queue.Queue = _queue.Queue()
 
 
-def _get_tts():
-    global _tts_engine
-    if _tts_engine is None:
-        _tts_engine = pyttsx3.init()
-        _tts_engine.setProperty("rate", 175)
-        _tts_engine.setProperty("volume", 1.0)
-        # prefer a Windows SAPI voice if available
-        voices = _tts_engine.getProperty("voices")
-        for v in voices:
-            if "zira" in v.name.lower() or "david" in v.name.lower():
-                _tts_engine.setProperty("voice", v.id)
-                break
-    return _tts_engine
+def _tts_worker() -> None:
+    """Dedicated TTS worker thread.  Owns the single pyttsx3 engine instance."""
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 175)
+    engine.setProperty("volume", 1.0)
+    voices = engine.getProperty("voices")
+    for v in voices:
+        if "zira" in v.name.lower() or "david" in v.name.lower():
+            engine.setProperty("voice", v.id)
+            break
+
+    while True:
+        item = _tts_queue.get()
+        if item is None:          # sentinel: shut down
+            _tts_queue.task_done()
+            break
+        text, done_event = item
+        try:
+            engine.say(text)
+            engine.runAndWait()
+        except Exception:         # noqa: BLE001 – never crash the TTS thread
+            pass
+        finally:
+            _tts_queue.task_done()
+            if done_event is not None:
+                done_event.set()
+
+
+# Start the worker immediately at import time so the first speak() is fast.
+_tts_thread = threading.Thread(target=_tts_worker, name="tts-worker", daemon=True)
+_tts_thread.start()
 
 
 def speak(text: str) -> None:
-    """Speak *text* aloud and print it."""
+    """Speak *text* aloud and block until the utterance is fully spoken."""
     logger.info("JARVIS: %s", text)
-    engine = _get_tts()
-    engine.say(text)
-    engine.runAndWait()
+    done = threading.Event()
+    _tts_queue.put((text, done))
+    done.wait()
+
+
+def speak_async(text: str) -> None:
+    """Speak *text* in the background and return immediately.
+
+    Use this when the response announcement should play *simultaneously* with
+    the action being performed (e.g. say "Opening Brave now" while the app
+    is already launching).
+    """
+    logger.info("JARVIS: %s", text)
+    _tts_queue.put((text, None))
 
 
 # ---------------------------------------------------------------------------
 # Animations (screen-edge overlay)
 # ---------------------------------------------------------------------------
-import threading
 import tkinter as tk
 
 

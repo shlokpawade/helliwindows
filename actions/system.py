@@ -17,7 +17,7 @@ from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
 from config import CONFIRM_DANGEROUS
-from utils import confirm_action, logger, run_command, speak
+from utils import confirm_action, logger, run_command, speak, speak_async
 
 # Characters not allowed in application names resolved from memory/voice input
 _UNSAFE_CHARS = set(';&|<>`$\'\"\\')
@@ -51,13 +51,13 @@ class SystemActions:
         try:
             os.startfile(executable)
             self._memory.set_last_app(app)
-            speak(f"Opening {app}.")
+            speak_async(f"Opening {app} now.")
         except OSError:
             # Fallback: use subprocess (handles commands on PATH like 'code')
             try:
                 subprocess.Popen([executable], shell=False)  # noqa: S603
                 self._memory.set_last_app(app)
-                speak(f"Opening {app}.")
+                speak_async(f"Opening {app} now.")
             except FileNotFoundError:
                 speak(f"I couldn't find {app}. Try teaching me the executable path first.")
 
@@ -79,7 +79,7 @@ class SystemActions:
                 except psutil.AccessDenied:
                     logger.warning("Access denied closing %s", proc.info["name"])
         if killed:
-            speak(f"Closed {app}.")
+            speak_async(f"Closing {app}.")
         else:
             speak(f"I couldn't find {app} running.")
 
@@ -97,22 +97,22 @@ class SystemActions:
         current = vol.GetMasterVolumeLevelScalar()
         new_val = min(1.0, current + 0.1)
         vol.SetMasterVolumeLevelScalar(new_val, None)
-        speak(f"Volume up to {int(new_val * 100)} percent.")
+        speak_async(f"Volume up to {int(new_val * 100)} percent.")
 
     def volume_down(self) -> None:
         vol = self._get_volume_interface()
         current = vol.GetMasterVolumeLevelScalar()
         new_val = max(0.0, current - 0.1)
         vol.SetMasterVolumeLevelScalar(new_val, None)
-        speak(f"Volume down to {int(new_val * 100)} percent.")
+        speak_async(f"Volume down to {int(new_val * 100)} percent.")
 
     def mute(self) -> None:
         self._get_volume_interface().SetMute(1, None)
-        speak("Muted.")
+        speak_async("Muted.")
 
     def unmute(self) -> None:
         self._get_volume_interface().SetMute(0, None)
-        speak("Unmuted.")
+        speak_async("Unmuted.")
 
     def set_volume(self, value: int | None = None, **_) -> None:
         if value is None:
@@ -120,7 +120,7 @@ class SystemActions:
             return
         clamped = max(0, min(100, int(value)))
         self._get_volume_interface().SetMasterVolumeLevelScalar(clamped / 100, None)
-        speak(f"Volume set to {clamped} percent.")
+        speak_async(f"Volume set to {clamped} percent.")
 
     # ------------------------------------------------------------------
     # Power / session
@@ -129,22 +129,22 @@ class SystemActions:
         if not confirm_action("shutdown"):
             speak("Shutdown cancelled.")
             return
-        speak("Shutting down Windows.")
+        speak_async("Shutting down Windows now.")
         run_command(["shutdown", "/s", "/t", "5"])
 
     def restart(self) -> None:
         if not confirm_action("restart"):
             speak("Restart cancelled.")
             return
-        speak("Restarting Windows.")
+        speak_async("Restarting Windows now.")
         run_command(["shutdown", "/r", "/t", "5"])
 
     def sleep(self) -> None:
-        speak("Going to sleep.")
+        speak_async("Going to sleep.")
         run_command(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"])
 
     def lock(self) -> None:
-        speak("Locking the screen.")
+        speak_async("Locking the screen.")
         run_command(["rundll32.exe", "user32.dll,LockWorkStation"])
 
     # ------------------------------------------------------------------
@@ -157,7 +157,7 @@ class SystemActions:
             path = os.path.join(os.path.expanduser("~"), "Pictures",
                                 f"screenshot_{_dt.now().strftime('%Y%m%d_%H%M%S')}.png")
             pyautogui.screenshot(path)
-            speak(f"Screenshot saved to {path}.")
+            speak_async(f"Screenshot saved to {path}.")
         except ImportError:
             speak("pyautogui is not installed. Run pip install pyautogui to enable screenshots.")
 
@@ -217,7 +217,7 @@ class SystemActions:
             time.sleep(0.5)
             pg.write(message, interval=0.1)
             pg.press('enter')  # Send
-            speak(f"Sent message to {contact}.")
+            speak_async(f"Sent message to {contact}.")
         except ImportError:
             speak("pyautogui is not installed. Run pip install pyautogui to enable messaging automation.")
         except Exception as e:

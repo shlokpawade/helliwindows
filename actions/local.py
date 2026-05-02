@@ -19,7 +19,7 @@ from typing import NamedTuple
 import requests
 
 from config import BASE_DIR
-from utils import logger, speak
+from utils import logger, speak, speak_async
 
 NOTES_FILE = BASE_DIR / "notes.txt"
 MAX_RECENT_NOTES = 5  # number of most-recent notes spoken by read_notes()
@@ -159,7 +159,7 @@ class LocalActions:
             parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
         duration_str = " and ".join(parts)
 
-        speak(f"Timer set for {duration_str}.")
+        speak_async(f"Timer set for {duration_str}.")
         logger.info("Timer started: %d seconds", total)
 
         def _alarm():
@@ -191,7 +191,7 @@ class LocalActions:
         duration_str = self._build_duration_str(int(minutes), int(seconds))
 
         reminder = _reminder_store.add(task_str, total, duration_str)
-        speak(f"Got it! I'll remind you about '{task_str}' in {duration_str}.")
+        speak_async(f"Got it! I'll remind you about '{task_str}' in {duration_str}.")
         logger.info("Reminder #%d set: '%s' in %d seconds", reminder.id, task_str, total)
 
         def _fire(rid: int) -> None:
