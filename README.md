@@ -237,6 +237,19 @@ hey windows … play lofi music on YouTube
 hey windows … play lo-fi                   ← direct YouTube search
 hey windows … open https://github.com
 
+# Knowledge questions → searched on the web automatically
+hey windows … who is Elon Musk
+hey windows … what is Python
+hey windows … what are black holes
+hey windows … how does a CPU work
+hey windows … explain quantum computing
+hey windows … define machine learning
+hey windows … when was the Eiffel Tower built
+hey windows … where is New Zealand
+hey windows … why does the sky look blue
+hey windows … tell me about the Roman Empire
+# Anything Jarvis doesn't recognise (2+ words) is also searched on the web
+
 # Files
 hey windows … open file C:\Users\Me\notes.txt
 hey windows … list files in Downloads
