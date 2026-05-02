@@ -58,7 +58,7 @@ MIC_DEVICE_INDEX  = 1             # None → system default
 # Wake word
 # ---------------------------------------------------------------------------
 WAKE_WORD         = "hey windows"
-WAKE_SENSITIVITY  = 0.0            # Vosk keyword threshold (0–1)
+WAKE_SENSITIVITY  = 0.75           # Vosk per-word confidence threshold (0–1)
 
 # ---------------------------------------------------------------------------
 # Brain / Intent
@@ -101,7 +101,7 @@ STT_SILENCE_THRESHOLD = int(os.getenv("STT_SILENCE_THRESHOLD", "300"))
 # Size of the Whisper model used for command recognition.
 # Options (smallest→largest): "tiny.en", "base.en", "small.en", "medium.en"
 # "base.en" gives a good speed/accuracy trade-off on CPU.
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base.en")
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small.en")
 # BCP-47 language code passed to Whisper. Use "en" for English (fastest).
 # Set to None to let Whisper auto-detect the language.
 WHISPER_LANGUAGE   = os.getenv("WHISPER_LANGUAGE", "en") or None

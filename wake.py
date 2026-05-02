@@ -38,6 +38,8 @@ class WakeWordDetector:
         # Keyword list format for Vosk grammar
         grammar = json.dumps(["hey windows"])
         self._rec = KaldiRecognizer(model, AUDIO_SAMPLE_RATE, grammar)
+        # Enable per-word confidence scores in Result() JSON
+        self._rec.SetWords(True)
         logger.info("Wake-word detector ready. Listening for '%s' …", WAKE_WORD)
 
     # ------------------------------------------------------------------
@@ -74,16 +76,23 @@ class WakeWordDetector:
 
                 if self._rec.AcceptWaveform(data):
                     result = json.loads(self._rec.Result())
-                    text: str = result.get("text", "")
-                    conf: float = result.get("confidence", 0.0)
-                    logger.debug("Wake recogniser: '%s' (conf=%.2f)", text, conf)
-                    if WAKE_WORD in text and conf >= WAKE_SENSITIVITY:
-                        logger.info("Wake word detected!")
-                        self._on_wake()
-                else:
-                    partial = json.loads(self._rec.PartialResult())
-                    if WAKE_WORD in partial.get("partial", ""):
-                        logger.debug("Partial wake match: %s", partial["partial"])
+                    text: str = result.get("text", "").strip()
+                    logger.debug("Wake recogniser result: '%s'", text)
+
+                    # Only trigger on an exact, full match of the wake word.
+                    if text == WAKE_WORD:
+                        # Use the minimum per-word confidence so every syllable
+                        # must be confident; fall back to 0.0 when words are absent.
+                        words = result.get("result", [])
+                        conf: float = (
+                            min((w.get("conf", 0.0) for w in words), default=0.0)
+                            if words
+                            else result.get("confidence", 0.0)
+                        )
+                        logger.debug("Wake word match conf=%.2f (threshold=%.2f)", conf, WAKE_SENSITIVITY)
+                        if conf >= WAKE_SENSITIVITY:
+                            logger.info("Wake word detected! (conf=%.2f)", conf)
+                            self._on_wake()
 
     # ------------------------------------------------------------------
     # Lifecycle
