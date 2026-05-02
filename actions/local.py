@@ -289,7 +289,30 @@ class LocalActions:
         speak("All notes cleared.")
 
     # ------------------------------------------------------------------
-    # Weather  (via public wttr.in, no API key needed)
+    # Clipboard (write)
+    # ------------------------------------------------------------------
+    def write_clipboard(self, text: str = "") -> None:
+        """Copy *text* to the system clipboard."""
+        if not text:
+            speak("What would you like me to copy to the clipboard?")
+            return
+        try:
+            proc = subprocess.Popen(
+                ["powershell", "-NonInteractive", "-Command", "$input | Set-Clipboard"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            proc.communicate(input=text, timeout=5)
+            preview = text if len(text) <= 60 else text[:60] + "…"
+            logger.info("Wrote to clipboard: %d chars", len(text))
+            speak_async(f"Copied to clipboard: {preview}.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("write_clipboard failed: %s", exc)
+            speak("Sorry, I couldn't write to the clipboard.")
+
+    # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     def get_weather(self, location: str = "") -> None:
         loc = location.strip() or ""

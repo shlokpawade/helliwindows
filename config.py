@@ -66,7 +66,7 @@ WAKE_SENSITIVITY  = 0.75           # Vosk per-word confidence threshold (0–1)
 USE_LOCAL_LLM     = os.getenv("USE_LOCAL_LLM", "true").lower() == "true"
 OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "phi3:mini")
 OLLAMA_URL        = os.getenv("OLLAMA_URL", "http://localhost:11434/v1/chat/completions")
-OLLAMA_TIMEOUT    = 30             # seconds; reduced for snappier responses
+OLLAMA_TIMEOUT    = 15             # seconds; intent parsing rarely needs more
 
 # ---------------------------------------------------------------------------
 # Safety
@@ -100,8 +100,9 @@ STT_SILENCE_THRESHOLD = int(os.getenv("STT_SILENCE_THRESHOLD", "300"))
 # ---------------------------------------------------------------------------
 # Size of the Whisper model used for command recognition.
 # Options (smallest→largest): "tiny.en", "base.en", "small.en", "medium.en"
-# "base.en" gives a good speed/accuracy trade-off on CPU.
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small.en")
+# "tiny.en" is the fastest on CPU; good enough for short voice commands.
+# Switch to "base.en" for better accuracy at the cost of ~2× slower inference.
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "tiny.en")
 # BCP-47 language code passed to Whisper. Use "en" for English (fastest).
 # Set to None to let Whisper auto-detect the language.
 WHISPER_LANGUAGE   = os.getenv("WHISPER_LANGUAGE", "en") or None

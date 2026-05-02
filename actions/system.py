@@ -39,6 +39,8 @@ def _safe_executable(name: str) -> str | None:
 class SystemActions:
     def __init__(self, memory) -> None:
         self._memory = memory
+        self._volume_iface = None   # cached COM volume interface
+        self._brightness = 50       # tracked brightness level (0–100)
 
     # ------------------------------------------------------------------
     # App control
@@ -88,11 +90,13 @@ class SystemActions:
     # ------------------------------------------------------------------
     # Volume
     # ------------------------------------------------------------------
-    @staticmethod
-    def _get_volume_interface():
-        devices = AudioUtilities.GetSpeakers()
-        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        return interface.QueryInterface(IAudioEndpointVolume)
+    def _get_volume_interface(self):
+        """Return a cached IAudioEndpointVolume COM interface."""
+        if self._volume_iface is None:
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            self._volume_iface = interface.QueryInterface(IAudioEndpointVolume)
+        return self._volume_iface
 
     def volume_up(self) -> None:
         vol = self._get_volume_interface()
@@ -219,6 +223,157 @@ class SystemActions:
             f"RAM usage is {ram.percent} percent, "
             f"{used_gb} of {total_gb} gigabytes used."
         )
+
+    # ------------------------------------------------------------------
+    # Brightness
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _set_brightness_wmi(level: int) -> None:
+        """Set display brightness via PowerShell WMI (built-in screens only)."""
+        try:
+            subprocess.run(
+                [
+                    "powershell", "-NonInteractive", "-Command",
+                    f"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods)"
+                    f".WmiSetBrightness(1,{level})",
+                ],
+                check=False, timeout=5, capture_output=True,
+            )
+            logger.info("Brightness set to %d%%", level)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not set brightness: %s", exc)
+
+    def brightness_up(self) -> None:
+        self._brightness = min(100, self._brightness + 10)
+        self._set_brightness_wmi(self._brightness)
+        speak_async(f"Brightness increased to {self._brightness} percent.")
+
+    def brightness_down(self) -> None:
+        self._brightness = max(0, self._brightness - 10)
+        self._set_brightness_wmi(self._brightness)
+        speak_async(f"Brightness decreased to {self._brightness} percent.")
+
+    def set_brightness(self, value: int | None = None, **_) -> None:
+        if value is None:
+            speak("Please specify a brightness level between 0 and 100.")
+            return
+        self._brightness = max(0, min(100, int(value)))
+        self._set_brightness_wmi(self._brightness)
+        speak_async(f"Brightness set to {self._brightness} percent.")
+
+    # ------------------------------------------------------------------
+    # Media controls (global media keys via pyautogui)
+    # ------------------------------------------------------------------
+    def media_pause_play(self) -> None:
+        """Toggle play/pause for any active media."""
+        try:
+            import pyautogui  # optional dependency
+            pyautogui.press("playpause")
+            speak_async("Toggled media playback.")
+        except ImportError:
+            speak("pyautogui is not installed. Run pip install pyautogui to enable media keys.")
+
+    def media_next(self) -> None:
+        """Skip to the next media track."""
+        try:
+            import pyautogui
+            pyautogui.press("nexttrack")
+            speak_async("Next track.")
+        except ImportError:
+            speak("pyautogui is not installed.")
+
+    def media_previous(self) -> None:
+        """Go back to the previous media track."""
+        try:
+            import pyautogui
+            pyautogui.press("prevtrack")
+            speak_async("Previous track.")
+        except ImportError:
+            speak("pyautogui is not installed.")
+
+    # ------------------------------------------------------------------
+    # Keyboard / input automation
+    # ------------------------------------------------------------------
+    def type_text(self, text: str = "") -> None:
+        """Type *text* into the currently focused window using copy-paste."""
+        if not text:
+            speak("What would you like me to type?")
+            return
+        try:
+            import pyautogui
+            import pyperclip
+            import time
+            pyperclip.copy(text)
+            time.sleep(0.2)
+            pyautogui.hotkey("ctrl", "v")
+            logger.info("Typed text (%d chars)", len(text))
+            speak_async("Done.")
+        except ImportError:
+            speak("pyautogui or pyperclip is not installed.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("type_text failed: %s", exc)
+            speak("Sorry, I couldn't type that.")
+
+    def press_hotkey(self, keys: str = "") -> None:
+        """Press a keyboard shortcut, e.g. 'ctrl v', 'alt tab', 'win d'."""
+        if not keys:
+            speak("Please specify the keys to press.")
+            return
+        _KEY_MAP = {
+            "control": "ctrl",
+            "escape": "esc",
+            "windows": "win",
+            "delete": "del",
+            "return": "enter",
+            "page up": "pageup",
+            "page down": "pagedown",
+        }
+        try:
+            import pyautogui
+            key_list = keys.lower().strip().split()
+            mapped = [_KEY_MAP.get(k, k) for k in key_list]
+            if len(mapped) == 1:
+                pyautogui.press(mapped[0])
+            else:
+                pyautogui.hotkey(*mapped)
+            speak_async(f"Pressed {keys}.")
+            logger.info("Pressed hotkey: %s", keys)
+        except ImportError:
+            speak("pyautogui is not installed.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("press_hotkey '%s' failed: %s", keys, exc)
+            speak(f"Couldn't press {keys}.")
+
+    # ------------------------------------------------------------------
+    # Desktop management
+    # ------------------------------------------------------------------
+    def show_desktop(self) -> None:
+        """Minimise all windows and show the desktop (Win + D)."""
+        try:
+            import pyautogui
+            pyautogui.hotkey("win", "d")
+        except ImportError:
+            run_command(
+                ["powershell", "-Command",
+                 "(New-Object -ComObject Shell.Application).MinimizeAll()"]
+            )
+        speak_async("Showing desktop.")
+
+    def empty_recycle_bin(self) -> None:
+        """Empty the Windows Recycle Bin silently."""
+        try:
+            subprocess.run(
+                [
+                    "powershell", "-NonInteractive", "-Command",
+                    "Clear-RecycleBin -Confirm:$false -ErrorAction SilentlyContinue",
+                ],
+                capture_output=True, timeout=15, check=False,
+            )
+            speak("Recycle bin emptied.")
+            logger.info("Recycle bin emptied.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("empty_recycle_bin failed: %s", exc)
+            speak("Sorry, I couldn't empty the recycle bin.")
 
     # ------------------------------------------------------------------
     # Messaging

@@ -105,12 +105,40 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bset\s+(volume|vol)\s+to\s+(?P<value>\d+)\b"), "set_volume",
      lambda m: {"value": int(m.group("value"))}),
 
+    # ---- Brightness ----
+    (re.compile(r"\bbrightness\s+up\b|\bincrease\s+brightness\b"), "brightness_up", None),
+    (re.compile(r"\bbrightness\s+down\b|\bdecrease\s+brightness\b|\bdim\s+(?:the\s+)?screen\b"), "brightness_down", None),
+    (re.compile(r"\bset\s+brightness\s+to\s+(?P<value>\d+)\b"), "set_brightness",
+     lambda m: {"value": int(m.group("value"))}),
+
     # ---- System ----
     (re.compile(r"\bshutdown\b"), "shutdown", None),
     (re.compile(r"\brestart\b"), "restart", None),
     (re.compile(r"\bsleep\b"), "sleep", None),
     (re.compile(r"\block\b"), "lock", None),
     (re.compile(r"\bscreenshot\b"), "screenshot", None),
+
+    # ---- Desktop / window management ----
+    (re.compile(r"\bshow\s+desktop\b|\bminimize\s+all\b|\bminimise\s+all\b"), "show_desktop", None),
+
+    # ---- Recycle bin ----
+    (re.compile(r"\bempty\s+(?:the\s+)?(?:recycle\s+bin|trash|recycling)\b"), "empty_recycle_bin", None),
+
+    # ---- Media controls ----
+    # "pause" at start of utterance, or "pause music/media" anywhere
+    (re.compile(r"^pause\b|\bpause\s+(?:music|media|track|song|audio)\b"), "media_pause_play", None),
+    (re.compile(r"\bresume\s+(?:music|media|track|song|audio)\b"), "media_pause_play", None),
+    (re.compile(r"\b(?:next|skip)\s+(?:track|song|music|media)\b"), "media_next", None),
+    (re.compile(r"\b(?:previous|prev)\s+(?:track|song|music|media)\b"), "media_previous", None),
+
+    # ---- Type text ----
+    # Anchored to start so "what type is…" doesn't trigger this rule
+    (re.compile(r"^type\s+(?:out\s+)?(?P<text>.+)"),
+     "type_text", lambda m: {"text": m.group("text").strip()}),
+
+    # ---- Press hotkey ----
+    (re.compile(r"^press\s+(?P<keys>.+)"),
+     "press_hotkey", lambda m: {"keys": m.group("keys").strip()}),
 
     # ---- Files ----
     # create_folder must precede delete/list so "create folder" isn't swallowed.
@@ -224,6 +252,8 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # ---- Clipboard ----
     (re.compile(r"\b(?:read|what(?:'s|\s+is)\s+in)\s+(?:my\s+)?clipboard\b"),
      "read_clipboard", None),
+    (re.compile(r"\b(?:write|copy|put)\s+(?P<text>.+?)\s+(?:to|in(?:to)?)\s+(?:my\s+)?clipboard\b"),
+     "write_clipboard", lambda m: {"text": m.group("text").strip()}),
 
     # ---- Weather ----
     (re.compile(r"\bweather\s+(?:in\s+|at\s+|for\s+)?(?P<query>\S.+)"), "get_weather",
