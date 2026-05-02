@@ -9,6 +9,8 @@ Developer-mode actions (run Python files, git, VS Code) live in actions/dev.py.
 
 import os
 import subprocess
+import urllib.parse
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -182,8 +184,6 @@ class SystemActions:
         Falls back to a web search only if the local LLM is unavailable.
         """
         from brain import query_llm_direct  # local import – avoids circular dependency
-        import urllib.parse
-        import webbrowser
 
         logger.info("ask_llm: %s", query)
         speak_async("Let me check that for you.")
