@@ -377,6 +377,108 @@ class SystemActions:
             speak("Sorry, I couldn't empty the recycle bin.")
 
     # ------------------------------------------------------------------
+    # Process management
+    # ------------------------------------------------------------------
+
+    def list_running_apps(self) -> None:
+        """List the names of currently running user processes."""
+        try:
+            names: list[str] = []
+            seen: set[str] = set()
+            for proc in psutil.process_iter(["name", "status"]):
+                name = (proc.info.get("name") or "").strip()
+                if not name or name.lower() in seen:
+                    continue
+                # Skip system/idle processes with no real name
+                if name.lower() in ("system idle process", "system", "idle", "registry"):
+                    continue
+                seen.add(name.lower())
+                names.append(name)
+            if not names:
+                speak("No running processes found.")
+                return
+            display = names[:10]
+            suffix = f" and {len(names) - 10} more" if len(names) > 10 else ""
+            speak(
+                f"Running applications: {', '.join(display)}{suffix}."
+            )
+            logger.info("list_running_apps: %d unique processes", len(names))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("list_running_apps failed: %s", exc)
+            speak("Sorry, I couldn't list running applications.")
+
+    def kill_process(self, app: str) -> None:
+        """Terminate all processes whose name contains *app*."""
+        from utils import confirm_action  # local to avoid circular at module level
+        if not confirm_action("delete_file"):   # reuse "dangerous" confirmation
+            speak("Process termination cancelled.")
+            return
+        killed = 0
+        for proc in psutil.process_iter(["name", "pid"]):
+            if app.lower() in (proc.info.get("name") or "").lower():
+                try:
+                    proc.terminate()
+                    killed += 1
+                except psutil.AccessDenied:
+                    logger.warning("Access denied killing %s", proc.info.get("name"))
+        if killed:
+            speak_async(f"Terminated {killed} instance{'s' if killed != 1 else ''} of {app}.")
+        else:
+            speak(f"I couldn't find any running process called {app}.")
+        logger.info("kill_process '%s': %d terminated", app, killed)
+
+    # ------------------------------------------------------------------
+    # Window snapping
+    # ------------------------------------------------------------------
+
+    def snap_window(self, direction: str = "left") -> None:
+        """Snap the active window using Win+Arrow / Win+Up / Win+Down."""
+        _key_map: dict[str, list[str]] = {
+            "left":     ["win", "left"],
+            "right":    ["win", "right"],
+            "up":       ["win", "up"],
+            "down":     ["win", "down"],
+            "maximize": ["win", "up"],
+            "minimize": ["win", "down"],
+        }
+        keys = _key_map.get(direction.lower().strip())
+        if keys is None:
+            speak(f"I don't know how to snap a window {direction}.")
+            return
+        try:
+            import pyautogui  # optional dependency
+            pyautogui.hotkey(*keys)
+            speak_async(f"Window snapped {direction}.")
+            logger.info("snap_window: %s (%s)", direction, keys)
+        except ImportError:
+            speak("pyautogui is not installed. Run pip install pyautogui to enable window snapping.")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("snap_window failed: %s", exc)
+            speak(f"Sorry, I couldn't snap the window {direction}.")
+
+    # ------------------------------------------------------------------
+    # Speech rate control
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def speech_rate_up() -> None:
+        """Increase TTS speech rate by 25 wpm."""
+        from utils import speech_rate_up as _up  # avoid circular import at module load
+        _up()
+
+    @staticmethod
+    def speech_rate_down() -> None:
+        """Decrease TTS speech rate by 25 wpm."""
+        from utils import speech_rate_down as _down
+        _down()
+
+    @staticmethod
+    def set_speech_rate(rate: int = 175) -> None:
+        """Set TTS speech rate to *rate* words per minute."""
+        from utils import set_speech_rate as _set
+        _set(rate)
+
+    # ------------------------------------------------------------------
     # Messaging
     # ------------------------------------------------------------------
     def send_whatsapp_message(self, contact: str, message: str) -> None:

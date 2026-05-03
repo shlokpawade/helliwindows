@@ -86,6 +86,33 @@ VSCODE_PATH       = os.getenv("VSCODE_PATH", "code")  # must be on PATH
 MAX_MEMORY_ENTRIES = 200           # cap history list length
 
 # ---------------------------------------------------------------------------
+# Persistent reminders (SQLite)
+# ---------------------------------------------------------------------------
+REMINDERS_DB = BASE_DIR / "reminders.db"
+
+# ---------------------------------------------------------------------------
+# News headlines (RSS)
+# ---------------------------------------------------------------------------
+NEWS_FEEDS: dict[str, str] = {
+    "bbc":     "http://feeds.bbci.co.uk/news/rss.xml",
+    "reuters": "https://feeds.reuters.com/reuters/topNews",
+    "google":  "https://news.google.com/rss",
+    "top":     "http://feeds.bbci.co.uk/news/rss.xml",  # default alias
+}
+NEWS_HEADLINES_COUNT = int(os.getenv("NEWS_HEADLINES_COUNT", "5"))
+
+# ---------------------------------------------------------------------------
+# TTS / speech rate
+# ---------------------------------------------------------------------------
+SPEECH_RATE     = int(os.getenv("SPEECH_RATE", "175"))      # words per minute
+TTS_VOICE_NAME  = os.getenv("TTS_VOICE_NAME", "")           # "" → auto (zira/david)
+
+# ---------------------------------------------------------------------------
+# Keyboard-trigger mode (skip Vosk wake-word; press Enter to speak)
+# ---------------------------------------------------------------------------
+KEYBOARD_TRIGGER_MODE = os.getenv("KEYBOARD_TRIGGER_MODE", "false").lower() == "true"
+
+# ---------------------------------------------------------------------------
 # STT tuning
 # ---------------------------------------------------------------------------
 # Multiply the raw microphone signal before feeding it to Vosk.

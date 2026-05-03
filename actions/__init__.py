@@ -3,27 +3,100 @@ actions/__init__.py – Registers and exports all action handlers.
 
 Import this module to get the complete {action_name: handler} mapping
 ready to pass to Planner.register_actions().
+
+Plugin auto-discovery
+---------------------
+Drop a Python module into the ``actions/`` directory and decorate any
+callable with ``@register_action("intent_name")``::
+
+    from actions import register_action
+
+    @register_action("my_custom_action")
+    def my_handler(**kwargs):
+        ...
+
+The decorator registers the function at import time.  Any module placed in
+``actions/`` is auto-imported when ``build_action_registry()`` is called,
+so no changes to this file are needed for new plugins.
 """
+
+import importlib
+import pkgutil
+from collections.abc import Callable
+from typing import Any
 
 from actions.dev import DevActions
 from actions.files import FileActions
 from actions.local import LocalActions
 from actions.modes import ModeActions
+from actions.network import NetworkActions
+from actions.news import NewsActions
 from actions.system import SystemActions
 from actions.web import WebActions
 
+# ---------------------------------------------------------------------------
+# Plugin registry – populated by @register_action
+# ---------------------------------------------------------------------------
 
-def build_action_registry(memory, listener=None) -> dict:
+_plugin_registry: dict[str, Callable] = {}
+
+
+def register_action(name: str) -> Callable:
+    """
+    Decorator that registers a function as an action handler.
+
+    Usage::
+
+        @register_action("greet_user")
+        def greet(name: str = "friend") -> None:
+            from utils import speak
+            speak(f"Hello, {name}!")
+    """
+    def _decorator(fn: Callable) -> Callable:
+        _plugin_registry[name] = fn
+        return fn
+    return _decorator
+
+
+def _auto_discover_plugins() -> None:
+    """
+    Import every module inside the ``actions`` package so that any
+    ``@register_action`` decorators they contain are executed.
+
+    Already-imported modules (dev, files, local, modes, network, news,
+    system, web) are skipped gracefully via importlib's cache.
+    """
+    import actions as _pkg
+    for _finder, mod_name, _is_pkg in pkgutil.iter_modules(_pkg.__path__):
+        full_name = f"actions.{mod_name}"
+        try:
+            importlib.import_module(full_name)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger("jarvis").warning(
+                "Plugin auto-discovery: could not import %s: %s", full_name, exc
+            )
+
+
+def build_action_registry(memory: Any, listener: Any = None) -> dict[str, Callable]:
     """Return a flat dict of {action_name: callable} for all modules."""
-    sys_act = SystemActions(memory)
-    file_act = FileActions(memory)
-    web_act = WebActions()
-    dev_act = DevActions()
-    local_act = LocalActions()
-    mode_act = ModeActions(listener=listener, sys_act=sys_act,
-                           web_act=web_act, dev_act=dev_act)
+    # Auto-discover plugin modules before building the registry so any
+    # @register_action decorators in drop-in action files are executed.
+    _auto_discover_plugins()
 
-    return {
+    sys_act  = SystemActions(memory)
+    file_act = FileActions(memory)
+    web_act  = WebActions(memory)
+    dev_act  = DevActions()
+    local_act = LocalActions()
+    mode_act  = ModeActions(
+        listener=listener, sys_act=sys_act,
+        web_act=web_act, dev_act=dev_act,
+    )
+    news_act = NewsActions()
+    net_act  = NetworkActions()
+
+    registry: dict[str, Callable] = {
         # System
         "open_app":          sys_act.open_app,
         "close_app":         sys_act.close_app,
@@ -55,6 +128,15 @@ def build_action_registry(memory, listener=None) -> dict:
         "media_previous":    sys_act.media_previous,
         "type_text":         sys_act.type_text,
         "press_hotkey":      sys_act.press_hotkey,
+        # Process management
+        "list_running_apps": sys_act.list_running_apps,
+        "kill_process":      sys_act.kill_process,
+        # Window snapping
+        "snap_window":       sys_act.snap_window,
+        # Speech rate
+        "speech_rate_up":    sys_act.speech_rate_up,
+        "speech_rate_down":  sys_act.speech_rate_down,
+        "set_speech_rate":   sys_act.set_speech_rate,
 
         # Files
         "open_file":         file_act.open_file,
@@ -62,6 +144,7 @@ def build_action_registry(memory, listener=None) -> dict:
         "list_files":        file_act.list_files,
         "create_folder":     file_act.create_folder,
         "add_app_mapping":   file_act.add_app_mapping,
+        "search_files":      file_act.search_files,
 
         # Web
         "web_search":        web_act.web_search,
@@ -81,6 +164,16 @@ def build_action_registry(memory, listener=None) -> dict:
         "get_weather":       local_act.get_weather,
         "read_clipboard":    local_act.read_clipboard,
         "write_clipboard":   local_act.write_clipboard,
+        "convert_units":     local_act.convert_units,
+
+        # News
+        "get_news":          news_act.get_news,
+
+        # Network
+        "check_internet":    net_act.check_internet,
+        "list_wifi_networks": net_act.list_wifi_networks,
+        "connect_wifi":      net_act.connect_wifi,
+        "get_ip_address":    net_act.get_ip_address,
 
         # Developer (gated by DEVELOPER_MODE flag)
         "run_python_file":   dev_act.run_python_file,
@@ -95,27 +188,28 @@ def build_action_registry(memory, listener=None) -> dict:
         "stop":              _stop,
     }
 
+    # Overlay auto-discovered plugin handlers (plugins can override built-ins)
+    registry.update(_plugin_registry)
+    return registry
+
 
 def _help(**_) -> None:
     from utils import speak
     speak(
         "I can open and close apps, search the web, play YouTube videos, "
         "control volume and brightness, manage media playback, "
-        "manage files and folders, run developer commands, "
-        "check battery and system info, calculate math, "
+        "manage files and folders, search for files by name, "
+        "run developer commands, check battery and system info, "
+        "calculate math, convert units like kilometers to miles or Celsius to Fahrenheit, "
         "set timers and reminders, save and read notes, "
-        "read and write the clipboard, get the weather, "
-        "show the desktop, empty the recycle bin, "
-        "type text and press hotkeys, and more. "
-        "For knowledge questions say 'who is Elon Musk', 'what is Python', "
-        "or 'explain quantum computing' and I'll answer using AI. "
+        "read and write the clipboard, get the weather, get news headlines, "
+        "check internet connectivity, list Wi-Fi networks, get your IP address, "
+        "show the desktop, empty the recycle bin, snap windows left or right, "
+        "list running apps, type text and press hotkeys. "
+        "Say 'speak faster' or 'speak slower' to adjust my speech speed. "
         "You can chain commands using 'and', for example: "
         "open chrome and play lo-fi music on YouTube. "
-        "Say 'brightness up', 'brightness down', or 'set brightness to 70'. "
-        "Say 'pause music', 'next track', or 'previous track' for media control. "
-        "Say 'show desktop' to minimise all windows. "
-        "Say 'type hello world' to type into the active window. "
-        "Say 'press ctrl c' to press keyboard shortcuts."
+        "Say 'press Enter' to speak in keyboard-trigger mode."
     )
 
 

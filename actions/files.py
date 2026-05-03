@@ -9,7 +9,7 @@ import os
 import shutil
 from pathlib import Path
 
-from utils import confirm_action, logger, speak
+from utils import confirm_action, logger, speak, speak_async
 
 # Common spoken location shortcuts → actual Path objects
 _LOCATION_ALIASES: dict[str, Path] = {
@@ -126,3 +126,65 @@ class FileActions:
     def add_app_mapping(self, app: str, executable: str) -> None:
         self._memory.add_app_mapping(app, executable)
         speak(f"Got it. I'll open {app} using {executable} from now on.")
+
+    # ------------------------------------------------------------------
+    # File search
+    # ------------------------------------------------------------------
+
+    _MAX_RESULTS = 20   # max number of matches to speak
+    _MAX_DEPTH   = 5    # how many directory levels to descend
+
+    def search_files(self, query: str = "", location: str = "") -> None:
+        """
+        Search for files whose name contains *query* under *location*.
+
+        *location* can be a known alias (desktop, documents, downloads …)
+        or a plain path.  Defaults to the user's home directory.
+        """
+        if not query.strip():
+            speak("Please tell me what file name to search for.")
+            return
+
+        # Resolve search root
+        loc_key = location.strip().lower()
+        if loc_key in _LOCATION_ALIASES:
+            base = _LOCATION_ALIASES[loc_key]
+        elif location.strip():
+            base = Path(os.path.expandvars(os.path.expanduser(location.strip())))
+        else:
+            base = Path.home()
+
+        if not base.is_dir():
+            speak(f"{location or 'Home'} is not a valid directory.")
+            return
+
+        speak_async(f"Searching for {query} in {base.name}.")
+        logger.info("search_files: query='%s' root='%s'", query, base)
+
+        matches: list[Path] = []
+        try:
+            for p in base.rglob(f"*{query}*"):
+                # Limit depth to avoid excessively long searches
+                try:
+                    depth = len(p.relative_to(base).parts)
+                except ValueError:
+                    continue
+                if depth > self._MAX_DEPTH:
+                    continue
+                matches.append(p)
+                if len(matches) >= self._MAX_RESULTS:
+                    break
+        except PermissionError:
+            pass
+
+        if not matches:
+            speak(f"No files matching '{query}' found in {base.name}.")
+            return
+
+        suffix = f" and more" if len(matches) == self._MAX_RESULTS else ""
+        speak(
+            f"Found {len(matches)} match{'es' if len(matches) != 1 else ''}{suffix}: "
+            + ", ".join(m.name for m in matches[:5])
+            + ("." if len(matches) <= 5 else ", and more.")
+        )
+        logger.info("search_files '%s': %d matches", query, len(matches))

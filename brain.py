@@ -121,8 +121,19 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # ---- Desktop / window management ----
     (re.compile(r"\bshow\s+desktop\b|\bminimize\s+all\b|\bminimise\s+all\b"), "show_desktop", None),
 
+    # ---- Window snapping ----
+    (re.compile(
+        r"\b(?:snap|move|pin)\s+(?:(?:the\s+)?window\s+)?(?:to\s+)?(?P<direction>left|right|up|down|maximize|maximize|minimize)\b"
+    ), "snap_window", lambda m: {"direction": m.group("direction").strip()}),
+
     # ---- Recycle bin ----
     (re.compile(r"\bempty\s+(?:the\s+)?(?:recycle\s+bin|trash|recycling)\b"), "empty_recycle_bin", None),
+
+    # ---- Speech rate ----
+    (re.compile(r"\bspeak\s+(?:faster|quicker|fast|quick)\b"), "speech_rate_up", None),
+    (re.compile(r"\bspeak\s+(?:slower|slow|more\s+slowly)\b"), "speech_rate_down", None),
+    (re.compile(r"\bset\s+speech\s+(?:rate|speed)\s+to\s+(?P<rate>\d+)\b"),
+     "set_speech_rate", lambda m: {"rate": int(m.group("rate"))}),
 
     # ---- Media controls ----
     # "pause" at start of utterance, or "pause music/media" anywhere
@@ -152,6 +163,18 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
         r"(?:named?\s+|called\s+)?(?P<name>.+)"
     ), "create_folder", _folder_name_arg),
     (re.compile(r"\bdelete\s+(?:file\s+)?(?P<path>.+)"), "delete_file", _file_arg),
+    # ---- Running processes (must come before list_files to avoid misparse) ----
+    (re.compile(r"\blist\s+(?:running\s+)?(?:apps?|applications?|processes?|tasks?)\b"),
+     "list_running_apps", None),
+    (re.compile(r"\bkill\s+(?:process\s+)?(?P<app>.+)"),
+     "kill_process", lambda m: {"app": m.group("app").strip()}),
+    # ---- File search ----
+    (re.compile(
+        r"\bfind\s+(?:files?\s+)?(?P<query>.+?)\s+in\s+(?P<location>\S.*)$"
+    ), "search_files",
+     lambda m: {"query": m.group("query").strip(), "location": m.group("location").strip()}),
+    (re.compile(r"\bfind\s+(?:files?\s+)?(?P<query>.+)"),
+     "search_files", lambda m: {"query": m.group("query").strip(), "location": ""}),
     (re.compile(r"\blist\s+(?:files?\s+in\s+)?(?P<path>.+)"), "list_files", _file_arg),
 
     # ---- Web / browser ----
@@ -190,6 +213,49 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # "what is 5 times 6" — only if the expression starts with a digit
     (re.compile(r"\bwhat\s+(?:is|s)\s+(?P<expr>[0-9].+)"),
      "calculate", lambda m: {"expression": m.group("expr").strip()}),
+
+    # ---- Unit conversion ----
+    # "convert 100 km to miles", "convert 5 kg to pounds"
+    (re.compile(
+        r"\bconvert\s+(?P<value>\d+)\s+(?P<from_unit>[a-z]+(?:\s+[a-z]+)?)"
+        r"\s+(?:to|into?)\s+(?P<to_unit>[a-z]+(?:\s+[a-z]+)?)\b"
+    ), "convert_units",
+     lambda m: {
+         "value": int(m.group("value")),
+         "from_unit": m.group("from_unit").strip(),
+         "to_unit":   m.group("to_unit").strip(),
+     }),
+    # "how many miles is 10 km"
+    (re.compile(
+        r"\bhow\s+many\s+(?P<to_unit>[a-z]+(?:\s+[a-z]+)?)"
+        r"\s+(?:is|are|in)\s+(?P<value>\d+)\s+(?P<from_unit>[a-z]+(?:\s+[a-z]+)?)\b"
+    ), "convert_units",
+     lambda m: {
+         "value":     int(m.group("value")),
+         "from_unit": m.group("from_unit").strip(),
+         "to_unit":   m.group("to_unit").strip(),
+     }),
+
+    # ---- News headlines ----
+    # Specific source queries must come before the generic "news" rule.
+    (re.compile(r"\bnews\s+(?:from|about|on|in)\s+(?P<source>.+)"),
+     "get_news", lambda m: {"source": m.group("source").strip()}),
+    (re.compile(r"\b(?:get|read|show)\s+(?:the\s+)?(?:latest\s+)?news\b"),
+     "get_news", lambda m: {"source": "", "count": 5}),
+    # "what is the news" / "what's the news" (normalised: "what s the news")
+    (re.compile(r"\bwhat\s+(?:is|are|s)\s+(?:the\s+)?(?:latest\s+)?news\b"),
+     "get_news", lambda m: {"source": "", "count": 5}),
+
+    # ---- Network / Wi-Fi ----
+    (re.compile(r"\bwhat\s+(?:is\s+)?(?:my\s+)?(?:ip|ip\s+address)\b"),
+     "get_ip_address", None),
+    (re.compile(r"\b(?:check|test)\s+(?:my\s+)?(?:internet|connection|network)\b"),
+     "check_internet", None),
+    # "list wifi", "show wireless networks"
+    (re.compile(r"\blist\s+(?:available\s+)?(?:wifi|wi\s*fi|wireless)\s*(?:networks?)?\b"),
+     "list_wifi_networks", None),
+    (re.compile(r"\bconnect\s+(?:to\s+)?(?:wifi|wi\s*fi|wireless)\s+(?P<ssid>.+)"),
+     "connect_wifi", lambda m: {"ssid": m.group("ssid").strip()}),
 
     # ---- Knowledge queries → answered directly by LLM (phi3:mini) ----
     # These rules MUST appear after the specific "what is the time/date" and
@@ -528,12 +594,36 @@ class Brain:
         """Run only rule-based matching.  Returns [Intent("unknown")] on miss."""
         norm = normalise(text)
 
-        # Context resolution: "open it" → last opened app
+        # ------------------------------------------------------------------
+        # Context resolution: short follow-up commands resolved from memory
+        # ------------------------------------------------------------------
+        # "open it / launch it / start it" → re-open last app
         if norm in ("open it", "launch it", "start it"):
             last = self._memory.last_app_opened()
             if last:
                 return [Intent("open_app", {"app": last}, raw=text)]
 
+        # "close it" → close the last opened app
+        if norm in ("close it", "stop it", "quit it"):
+            last = self._memory.last_app_opened()
+            if last:
+                return [Intent("close_app", {"app": last}, raw=text)]
+
+        # "search that again" / "search again" → repeat last web search
+        if re.search(r"\bsearch\s+(?:that|it)\s+again\b|\bsearch\s+again\b", norm):
+            q = self._memory.get_context("last_search_query")
+            if q:
+                return [Intent("web_search", {"query": q}, raw=text)]
+
+        # "play that again" / "play it again" → repeat last media query
+        if re.search(r"\bplay\s+(?:that|it)\s+again\b|\bplay\s+again\b", norm):
+            q = self._memory.get_context("last_media_query")
+            if q:
+                return [Intent("play_media", {"query": q}, raw=text)]
+
+        # ------------------------------------------------------------------
+        # Standard rule matching
+        # ------------------------------------------------------------------
         for pattern, intent_name, extractor in _RULES:
             m = pattern.search(norm)
             if m:

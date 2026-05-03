@@ -1,9 +1,9 @@
 """
 actions/local.py – Fully offline local utility actions.
 
-Provides: calculator, countdown timer, reminders, notes (take/read/clear),
-clipboard read, and weather lookup via the public wttr.in service (requires
-internet but no API key).
+Provides: calculator, countdown timer, reminders (SQLite-persistent), notes
+(take/read/clear), clipboard read/write, unit conversion, and weather lookup
+via the public wttr.in service (requires internet but no API key).
 """
 
 import ast
@@ -15,68 +15,19 @@ import time
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
 
 import requests
 
 from config import BASE_DIR
+from scheduler import reminder_store
 from utils import logger, speak, speak_async
 
 NOTES_FILE = BASE_DIR / "notes.txt"
 MAX_RECENT_NOTES = 5  # number of most-recent notes spoken by read_notes()
 
-# ---------------------------------------------------------------------------
-# Reminder store (in-memory; thread-safe via lock)
-# ---------------------------------------------------------------------------
-
-class _Reminder(NamedTuple):
-    id: int
-    task: str
-    fire_at: float     # monotonic clock value (time.monotonic())
-    label: str         # human-readable duration string
-
-
-class _ReminderStore:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._reminders: list[_Reminder] = []
-        self._next_id = 1
-
-    def add(self, task: str, total_seconds: int, duration_label: str) -> _Reminder:
-        with self._lock:
-            rid = self._next_id
-            self._next_id += 1
-            r = _Reminder(
-                id=rid,
-                task=task,
-                fire_at=time.monotonic() + total_seconds,
-                label=duration_label,
-            )
-            self._reminders.append(r)
-        return r
-
-    def remove(self, rid: int) -> bool:
-        with self._lock:
-            before = len(self._reminders)
-            self._reminders = [r for r in self._reminders if r.id != rid]
-            return len(self._reminders) < before
-
-    def list_all(self) -> list[_Reminder]:
-        with self._lock:
-            return list(self._reminders)
-
-    def cancel_by_task(self, fragment: str) -> int:
-        """Cancel all reminders whose task contains *fragment*; returns count."""
-        with self._lock:
-            before = len(self._reminders)
-            self._reminders = [
-                r for r in self._reminders
-                if fragment.lower() not in r.task.lower()
-            ]
-            return before - len(self._reminders)
-
-
-_reminder_store = _ReminderStore()
+# _reminder_store is now the SQLite-backed singleton from scheduler.py.
+# Keep the local alias so the rest of the module doesn't need to change.
+_reminder_store = reminder_store
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +162,9 @@ class LocalActions:
             speak("You have no pending reminders.")
             return
         lines = []
+        now = time.time()
         for r in reminders:
-            remaining = max(0, r.fire_at - time.monotonic())
+            remaining = max(0, r.fire_at - now)
             mins, secs = divmod(int(remaining), 60)
             if mins:
                 time_left = f"{mins} minute{'s' if mins != 1 else ''}"
@@ -333,3 +285,125 @@ class LocalActions:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Weather lookup failed: %s", exc)
             speak("Sorry, I couldn't retrieve the weather right now.")
+
+    # ------------------------------------------------------------------
+    # Unit conversion (fully offline)
+    # ------------------------------------------------------------------
+
+    # Conversion table: maps (from_unit, to_unit) → multiplier so that
+    #   result = value * multiplier
+    # All conversions are normalised via aliases before lookup.
+    _UNIT_ALIASES: dict[str, str] = {
+        # Length
+        "kilometer": "km", "kilometers": "km", "kilometre": "km", "kilometres": "km",
+        "meter": "m", "meters": "m", "metre": "m", "metres": "m",
+        "centimeter": "cm", "centimeters": "cm",
+        "millimeter": "mm", "millimeters": "mm",
+        "mile": "mi", "miles": "mi",
+        "foot": "ft", "feet": "ft",
+        "inch": "in", "inches": "in",
+        "yard": "yd", "yards": "yd",
+        # Weight / mass
+        "kilogram": "kg", "kilograms": "kg", "kilo": "kg", "kilos": "kg",
+        "gram": "g", "grams": "g",
+        "pound": "lb", "pounds": "lb", "lbs": "lb",
+        "ounce": "oz", "ounces": "oz",
+        "tonne": "t", "tonnes": "t", "ton": "t", "tons": "t",
+        # Temperature
+        "celsius": "c", "centigrade": "c",
+        "fahrenheit": "f",
+        "kelvin": "k",
+        # Speed
+        "kilometer per hour": "kmh", "kilometres per hour": "kmh", "kmph": "kmh",
+        "kph": "kmh",
+        "mile per hour": "mph", "miles per hour": "mph",
+        "meter per second": "mps", "metres per second": "mps",
+        # Data storage
+        "byte": "b", "bytes": "b",
+        "kilobyte": "kb", "kilobytes": "kb",
+        "megabyte": "mb", "megabytes": "mb",
+        "gigabyte": "gb", "gigabytes": "gb",
+        "terabyte": "tb", "terabytes": "tb",
+        # Time
+        "second": "s", "seconds": "s",
+        "minute": "min", "minutes": "min",
+        "hour": "hr", "hours": "hr",
+        "day": "day", "days": "day",
+    }
+
+    # Multipliers to a common base unit per category (base unit listed first)
+    _TO_BASE: dict[str, float] = {
+        # Length (base: m)
+        "m": 1.0, "km": 1000.0, "cm": 0.01, "mm": 0.001,
+        "mi": 1609.344, "ft": 0.3048, "in": 0.0254, "yd": 0.9144,
+        # Weight (base: kg)
+        "kg": 1.0, "g": 0.001, "lb": 0.453592, "oz": 0.0283495,
+        "t": 1000.0,
+        # Speed (base: mps)
+        "mps": 1.0, "kmh": 1.0 / 3.6, "mph": 0.44704,
+        # Data (base: b)
+        "b": 1.0, "kb": 1024.0, "mb": 1024.0 ** 2,
+        "gb": 1024.0 ** 3, "tb": 1024.0 ** 4,
+        # Time (base: s)
+        "s": 1.0, "min": 60.0, "hr": 3600.0, "day": 86400.0,
+    }
+
+    # Temperature needs special formulas, not a multiplier
+    _TEMP_UNITS = {"c", "f", "k"}
+
+    @staticmethod
+    def _convert_temperature(value: float, from_u: str, to_u: str) -> float | None:
+        # Convert to Kelvin first
+        if from_u == "c":
+            k = value + 273.15
+        elif from_u == "f":
+            k = (value + 459.67) * 5 / 9
+        elif from_u == "k":
+            k = value
+        else:
+            return None
+        # Convert from Kelvin to target
+        if to_u == "c":
+            return k - 273.15
+        if to_u == "f":
+            return k * 9 / 5 - 459.67
+        if to_u == "k":
+            return k
+        return None
+
+    def convert_units(
+        self, value: float = 0.0, from_unit: str = "", to_unit: str = ""
+    ) -> None:
+        """Convert *value* from *from_unit* to *to_unit* and speak the result."""
+        if not from_unit or not to_unit:
+            speak("Please specify both units for the conversion.")
+            return
+
+        fu = self._UNIT_ALIASES.get(from_unit.lower().strip(), from_unit.lower().strip())
+        tu = self._UNIT_ALIASES.get(to_unit.lower().strip(), to_unit.lower().strip())
+
+        # Temperature special case
+        if fu in self._TEMP_UNITS or tu in self._TEMP_UNITS:
+            result = self._convert_temperature(float(value), fu, tu)
+            if result is None:
+                speak(f"I don't know how to convert {from_unit} to {to_unit}.")
+                return
+            result = round(result, 2)
+            speak(f"{value} {from_unit} is {result} {to_unit}.")
+            logger.info("convert_units: %s %s → %s %s", value, fu, result, tu)
+            return
+
+        base_from = self._TO_BASE.get(fu)
+        base_to = self._TO_BASE.get(tu)
+        if base_from is None or base_to is None:
+            speak(f"I don't know how to convert {from_unit} to {to_unit}.")
+            return
+
+        result = float(value) * base_from / base_to
+        # Pretty-print: drop trailing zeros for whole-number results
+        result_str = (
+            str(int(round(result))) if abs(result - round(result)) < 1e-9
+            else f"{result:.4f}".rstrip("0").rstrip(".")
+        )
+        speak(f"{value} {from_unit} is {result_str} {to_unit}.")
+        logger.info("convert_units: %s %s → %s %s", value, fu, result_str, tu)

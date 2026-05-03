@@ -40,6 +40,9 @@ def _get_first_youtube_video_id(query: str) -> str | None:
 
 
 class WebActions:
+    def __init__(self, memory=None) -> None:
+        self._memory = memory
+
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
@@ -49,6 +52,9 @@ class WebActions:
         logger.info("Web search: %s", query)
         speak_async(f"Searching for {query} now.")
         webbrowser.open(url)
+        # Update context for multi-turn follow-ups
+        if self._memory is not None:
+            self._memory.set_context("last_search_query", query)
 
     # ------------------------------------------------------------------
     # YouTube
@@ -64,6 +70,8 @@ class WebActions:
             url = f"https://www.youtube.com/results?search_query={encoded}"
             logger.info("YouTube search fallback: %s", query)
         webbrowser.open(url)
+        if self._memory is not None:
+            self._memory.set_context("last_media_query", query)
 
     def play_media(self, query: str) -> None:
         """Play media by finding and opening the first YouTube result."""
@@ -77,6 +85,8 @@ class WebActions:
             url = f"https://www.youtube.com/results?search_query={encoded}"
             logger.info("Play media (YouTube search fallback): %s", query)
         webbrowser.open(url)
+        if self._memory is not None:
+            self._memory.set_context("last_media_query", query)
 
     # ------------------------------------------------------------------
     # Open URL directly

@@ -13,7 +13,7 @@ from datetime import datetime
 
 import pyttsx3
 
-from config import LOG_FILE, LOGS_FILE, CONFIRM_DANGEROUS, DANGEROUS_ACTIONS
+from config import LOG_FILE, LOGS_FILE, CONFIRM_DANGEROUS, DANGEROUS_ACTIONS, SPEECH_RATE, TTS_VOICE_NAME
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -64,19 +64,53 @@ _tts_queue: _queue.Queue = _queue.Queue()
 def _tts_worker() -> None:
     """Dedicated TTS worker thread.  Owns the single pyttsx3 engine instance."""
     engine = pyttsx3.init()
-    engine.setProperty("rate", 175)
+    engine.setProperty("rate", SPEECH_RATE)
     engine.setProperty("volume", 1.0)
     voices = engine.getProperty("voices")
-    for v in voices:
-        if "zira" in v.name.lower() or "david" in v.name.lower():
-            engine.setProperty("voice", v.id)
-            break
+    # Voice selection: prefer configured name, else fall back to zira/david
+    chosen = False
+    if TTS_VOICE_NAME:
+        for v in voices:
+            if TTS_VOICE_NAME.lower() in v.name.lower():
+                engine.setProperty("voice", v.id)
+                chosen = True
+                break
+    if not chosen:
+        for v in voices:
+            if "zira" in v.name.lower() or "david" in v.name.lower():
+                engine.setProperty("voice", v.id)
+                break
 
     while True:
         item = _tts_queue.get()
         if item is None:          # sentinel: shut down
             _tts_queue.task_done()
             break
+        # Speech-rate command: ("__rate__", int_rate, done_event)
+        if isinstance(item, tuple) and len(item) == 3 and item[0] == "__rate__":
+            _, new_rate, done_event = item
+            try:
+                engine.setProperty("rate", max(50, min(500, int(new_rate))))
+            except Exception:  # noqa: BLE001
+                pass
+            _tts_queue.task_done()
+            if done_event is not None:
+                done_event.set()
+            continue
+        # Relative rate-delta command: ("__rate_delta__", delta, done_event, out_list)
+        if isinstance(item, tuple) and len(item) == 4 and item[0] == "__rate_delta__":
+            _, delta, done_event, out_list = item
+            try:
+                current = int(engine.getProperty("rate") or SPEECH_RATE)
+                new_rate = max(50, min(500, current + delta))
+                engine.setProperty("rate", new_rate)
+                out_list[0] = new_rate
+            except Exception:  # noqa: BLE001
+                pass
+            _tts_queue.task_done()
+            if done_event is not None:
+                done_event.set()
+            continue
         text, done_event = item
         try:
             engine.say(text)
@@ -111,6 +145,45 @@ def speak_async(text: str) -> None:
     """
     logger.info("JARVIS: %s", text)
     _tts_queue.put((text, None))
+
+
+# ---------------------------------------------------------------------------
+# Speech rate control
+# ---------------------------------------------------------------------------
+
+def set_speech_rate(rate: int) -> None:
+    """Change TTS speech rate (words per minute).  Thread-safe."""
+    logger.info("Setting speech rate to %d wpm", rate)
+    done = threading.Event()
+    _tts_queue.put(("__rate__", rate, done))
+    done.wait()
+    speak(f"Speech rate set to {rate}.")
+
+
+def speech_rate_up() -> None:
+    """Increase speech rate by 25 wpm (capped at 500)."""
+    done = threading.Event()
+    # We send a sentinel that the worker will interpret as a relative change.
+    # For simplicity, bump by a fixed delta and read back the current rate
+    # via a closure captured from SPEECH_RATE.
+    _new_rate = [SPEECH_RATE]  # mutable via list
+
+    def _bump(current_rate: int) -> int:
+        return min(500, current_rate + 25)
+
+    # Use a special 4-tuple to signal a relative adjustment
+    _tts_queue.put(("__rate_delta__", +25, done, _new_rate))
+    done.wait()
+    speak(f"Speaking faster.")
+
+
+def speech_rate_down() -> None:
+    """Decrease speech rate by 25 wpm (floored at 50)."""
+    done = threading.Event()
+    _new_rate = [SPEECH_RATE]
+    _tts_queue.put(("__rate_delta__", -25, done, _new_rate))
+    done.wait()
+    speak("Speaking slower.")
 
 
 # ---------------------------------------------------------------------------

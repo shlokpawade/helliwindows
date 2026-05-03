@@ -101,8 +101,18 @@ class Memory:
             self._data[key] = value
             self._save()
 
-    def record_command(self, text: str, intent: str, success: bool) -> None:
-        """Append a command to history, capping at MAX_MEMORY_ENTRIES."""
+    def record_command(
+        self,
+        text: str,
+        intent: str,
+        success: bool,
+        args: dict | None = None,
+    ) -> None:
+        """Append a command to history, capping at MAX_MEMORY_ENTRIES.
+
+        *args* are stored alongside the entry so multi-turn context can
+        look up the arguments of the most recent recognised command.
+        """
         entry = {
             "ts": now_iso(),
             "text": text,
@@ -115,6 +125,15 @@ class Memory:
             if len(history) > MAX_MEMORY_ENTRIES:
                 self._data["history"] = history[-MAX_MEMORY_ENTRIES:]
             self._data["last_action"] = intent
+            # Persist intent args for multi-turn context resolution
+            if args is not None:
+                self._data["last_intent_args"] = args
+                # Track the last search / media query explicitly so Brain can
+                # resolve follow-up commands like "search that again".
+                if intent in ("web_search",):
+                    self._data["last_search_query"] = args.get("query", "")
+                elif intent in ("youtube_search", "play_media"):
+                    self._data["last_media_query"] = args.get("query", "")
             self._save()
         # Also persist to the structured JSON event log
         log_event("command", {"text": text, "intent": intent, "success": success})
@@ -168,4 +187,19 @@ class Memory:
     def set_last_app(self, app: str) -> None:
         with self._lock:
             self._data["last_app_opened"] = app
+            self._save()
+
+    # ------------------------------------------------------------------
+    # Multi-turn context helpers
+    # ------------------------------------------------------------------
+
+    def get_context(self, key: str, default: Any = None) -> Any:
+        """Return a named context value (e.g. 'last_search_query')."""
+        with self._lock:
+            return self._data.get(key, default)
+
+    def set_context(self, key: str, value: Any) -> None:
+        """Persist an arbitrary context value to memory."""
+        with self._lock:
+            self._data[key] = value
             self._save()
