@@ -313,6 +313,7 @@ class LocalActions:
             speak("Sorry, I couldn't write to the clipboard.")
 
     # ------------------------------------------------------------------
+    # Weather  (via public wttr.in, no API key needed)
     # ------------------------------------------------------------------
     def get_weather(self, location: str = "") -> None:
         loc = location.strip() or ""

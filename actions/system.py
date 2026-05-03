@@ -249,7 +249,7 @@ class SystemActions:
         speak_async(f"Brightness increased to {self._brightness} percent.")
 
     def brightness_down(self) -> None:
-        self._brightness = max(0, self._brightness - 10)
+        self._brightness = max(5, self._brightness - 10)
         self._set_brightness_wmi(self._brightness)
         speak_async(f"Brightness decreased to {self._brightness} percent.")
 
@@ -257,7 +257,7 @@ class SystemActions:
         if value is None:
             speak("Please specify a brightness level between 0 and 100.")
             return
-        self._brightness = max(0, min(100, int(value)))
+        self._brightness = max(5, min(100, int(value)))
         self._set_brightness_wmi(self._brightness)
         speak_async(f"Brightness set to {self._brightness} percent.")
 
@@ -304,7 +304,8 @@ class SystemActions:
             import pyperclip
             import time
             pyperclip.copy(text)
-            time.sleep(0.2)
+            # Small delay to let the OS register the clipboard update before pasting.
+            time.sleep(0.15)
             pyautogui.hotkey("ctrl", "v")
             logger.info("Typed text (%d chars)", len(text))
             speak_async("Done.")
