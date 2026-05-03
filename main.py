@@ -56,7 +56,7 @@ class JarvisAssistant:
     def _handle_turn(self) -> None:
         """One full listen → understand → act cycle."""
         show_wake_animation()
-        speak("how can i help you today")
+        speak_async("how can i help you today")
         listening_light = start_listening_light()
         logger.info("listening")
         try:

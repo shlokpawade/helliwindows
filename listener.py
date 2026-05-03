@@ -21,10 +21,10 @@ from config import (
     WHISPER_LANGUAGE,
     WHISPER_MODEL_SIZE,
 )
-from utils import logger, speak
+from utils import logger, speak, speak_async
 
 # Seconds of continuous silence after speech before the utterance is complete
-_SILENCE_TIMEOUT = 3.0
+_SILENCE_TIMEOUT = 1.5
 # Hard upper limit so the listener never blocks forever
 _MAX_LISTEN_DURATION = 15.0
 
@@ -42,7 +42,7 @@ class Listener:
         Open the microphone, record until silence, transcribe with Whisper,
         and return the recognised text.  Returns an empty string on failure.
         """
-        speak("Listening …")
+        speak_async("Listening …")
         audio_q: queue.Queue[bytes] = queue.Queue()
 
         def _callback(indata, frames, time, status):  # noqa: ANN001
@@ -133,8 +133,8 @@ class Listener:
             audio_np,
             language=WHISPER_LANGUAGE,
             fp16=False,
-            beam_size=5,
-            best_of=5,
+            beam_size=1,
+            best_of=1,
             temperature=0.0,
             condition_on_previous_text=False,
             no_speech_threshold=0.5,

@@ -33,6 +33,9 @@ def build_action_registry(memory, listener=None) -> dict:
         "mute":              sys_act.mute,
         "unmute":            sys_act.unmute,
         "set_volume":        sys_act.set_volume,
+        "brightness_up":     sys_act.brightness_up,
+        "brightness_down":   sys_act.brightness_down,
+        "set_brightness":    sys_act.set_brightness,
         "shutdown":          sys_act.shutdown,
         "restart":           sys_act.restart,
         "sleep":             sys_act.sleep,
@@ -45,6 +48,13 @@ def build_action_registry(memory, listener=None) -> dict:
         "send_whatsapp_message": sys_act.send_whatsapp_message,
         "chat_response":     sys_act.chat_response,
         "ask_llm":           sys_act.ask_llm,
+        "show_desktop":      sys_act.show_desktop,
+        "empty_recycle_bin": sys_act.empty_recycle_bin,
+        "media_pause_play":  sys_act.media_pause_play,
+        "media_next":        sys_act.media_next,
+        "media_previous":    sys_act.media_previous,
+        "type_text":         sys_act.type_text,
+        "press_hotkey":      sys_act.press_hotkey,
 
         # Files
         "open_file":         file_act.open_file,
@@ -70,6 +80,7 @@ def build_action_registry(memory, listener=None) -> dict:
         "clear_notes":       local_act.clear_notes,
         "get_weather":       local_act.get_weather,
         "read_clipboard":    local_act.read_clipboard,
+        "write_clipboard":   local_act.write_clipboard,
 
         # Developer (gated by DEVELOPER_MODE flag)
         "run_python_file":   dev_act.run_python_file,
@@ -88,16 +99,23 @@ def build_action_registry(memory, listener=None) -> dict:
 def _help(**_) -> None:
     from utils import speak
     speak(
-        "I can open apps, search the web, play YouTube videos, control volume, "
-        "manage files, create folders, run developer commands, check battery and system info, "
-        "calculate math, set timers, set reminders, save notes, read the clipboard, "
-        "get the weather, and more. "
+        "I can open and close apps, search the web, play YouTube videos, "
+        "control volume and brightness, manage media playback, "
+        "manage files and folders, run developer commands, "
+        "check battery and system info, calculate math, "
+        "set timers and reminders, save and read notes, "
+        "read and write the clipboard, get the weather, "
+        "show the desktop, empty the recycle bin, "
+        "type text and press hotkeys, and more. "
         "For knowledge questions say 'who is Elon Musk', 'what is Python', "
-        "'how does a CPU work', 'explain quantum computing' – I'll answer directly using AI. "
-        "To create a folder say: 'create folder Photos in Desktop' or 'make a new folder called Projects in Documents'. "
+        "or 'explain quantum computing' and I'll answer using AI. "
         "You can chain commands using 'and', for example: "
         "open chrome and play lo-fi music on YouTube. "
-        "For reminders say: remind me in 10 minutes for a meeting."
+        "Say 'brightness up', 'brightness down', or 'set brightness to 70'. "
+        "Say 'pause music', 'next track', or 'previous track' for media control. "
+        "Say 'show desktop' to minimise all windows. "
+        "Say 'type hello world' to type into the active window. "
+        "Say 'press ctrl c' to press keyboard shortcuts."
     )
 
 

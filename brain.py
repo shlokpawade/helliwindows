@@ -105,12 +105,40 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     (re.compile(r"\bset\s+(volume|vol)\s+to\s+(?P<value>\d+)\b"), "set_volume",
      lambda m: {"value": int(m.group("value"))}),
 
+    # ---- Brightness ----
+    (re.compile(r"\bbrightness\s+up\b|\bincrease\s+brightness\b"), "brightness_up", None),
+    (re.compile(r"\bbrightness\s+down\b|\bdecrease\s+brightness\b|\bdim\s+(?:the\s+)?screen\b"), "brightness_down", None),
+    (re.compile(r"\bset\s+brightness\s+to\s+(?P<value>\d+)\b"), "set_brightness",
+     lambda m: {"value": int(m.group("value"))}),
+
     # ---- System ----
     (re.compile(r"\bshutdown\b"), "shutdown", None),
     (re.compile(r"\brestart\b"), "restart", None),
     (re.compile(r"\bsleep\b"), "sleep", None),
     (re.compile(r"\block\b"), "lock", None),
     (re.compile(r"\bscreenshot\b"), "screenshot", None),
+
+    # ---- Desktop / window management ----
+    (re.compile(r"\bshow\s+desktop\b|\bminimize\s+all\b|\bminimise\s+all\b"), "show_desktop", None),
+
+    # ---- Recycle bin ----
+    (re.compile(r"\bempty\s+(?:the\s+)?(?:recycle\s+bin|trash|recycling)\b"), "empty_recycle_bin", None),
+
+    # ---- Media controls ----
+    # "pause" at start of utterance, or "pause music/media" anywhere
+    (re.compile(r"^pause\b|\bpause\s+(?:music|media|track|song|audio)\b"), "media_pause_play", None),
+    (re.compile(r"\bresume\s+(?:music|media|track|song|audio)\b"), "media_pause_play", None),
+    (re.compile(r"\b(?:next|skip)\s+(?:track|song|music|media)\b"), "media_next", None),
+    (re.compile(r"\b(?:previous|prev)\s+(?:track|song|music|media)\b"), "media_previous", None),
+
+    # ---- Type text ----
+    # Anchored to start so "what type is…" doesn't trigger this rule
+    (re.compile(r"^type\s+(?:out\s+)?(?P<text>.+)"),
+     "type_text", lambda m: {"text": m.group("text").strip()}),
+
+    # ---- Press hotkey ----
+    (re.compile(r"^press\s+(?P<keys>.+)"),
+     "press_hotkey", lambda m: {"keys": m.group("keys").strip()}),
 
     # ---- Files ----
     # create_folder must precede delete/list so "create folder" isn't swallowed.
@@ -224,6 +252,8 @@ _RULES: list[tuple[re.Pattern, str, Any]] = [
     # ---- Clipboard ----
     (re.compile(r"\b(?:read|what(?:'s|\s+is)\s+in)\s+(?:my\s+)?clipboard\b"),
      "read_clipboard", None),
+    (re.compile(r"\b(?:write|copy|put)\s+(?P<text>.+?)\s+(?:to|in(?:to)?)\s+(?:my\s+)?clipboard\b"),
+     "write_clipboard", lambda m: {"text": m.group("text").strip()}),
 
     # ---- Weather ----
     (re.compile(r"\bweather\s+(?:in\s+|at\s+|for\s+)?(?P<query>\S.+)"), "get_weather",
@@ -253,15 +283,26 @@ _LLM_SYSTEM_PROMPT = (
     "- volume_down: [{\"intent\": \"volume_down\", \"args\": {}}]\n"
     "- set_volume: [{\"intent\": \"set_volume\", \"args\": {\"value\": 50}}]\n"
     "- mute: [{\"intent\": \"mute\", \"args\": {}}]\n"
+    "- brightness_up: [{\"intent\": \"brightness_up\", \"args\": {}}]\n"
+    "- brightness_down: [{\"intent\": \"brightness_down\", \"args\": {}}]\n"
+    "- set_brightness: [{\"intent\": \"set_brightness\", \"args\": {\"value\": 70}}]\n"
     "- get_time: [{\"intent\": \"get_time\", \"args\": {}}]\n"
     "- get_date: [{\"intent\": \"get_date\", \"args\": {}}]\n"
     "- screenshot: [{\"intent\": \"screenshot\", \"args\": {}}]\n"
+    "- show_desktop: [{\"intent\": \"show_desktop\", \"args\": {}}]\n"
+    "- empty_recycle_bin: [{\"intent\": \"empty_recycle_bin\", \"args\": {}}]\n"
+    "- media_pause_play: [{\"intent\": \"media_pause_play\", \"args\": {}}]\n"
+    "- media_next: [{\"intent\": \"media_next\", \"args\": {}}]\n"
+    "- media_previous: [{\"intent\": \"media_previous\", \"args\": {}}]\n"
+    "- type_text: [{\"intent\": \"type_text\", \"args\": {\"text\": \"hello world\"}}]\n"
+    "- press_hotkey: [{\"intent\": \"press_hotkey\", \"args\": {\"keys\": \"ctrl c\"}}]\n"
     "- shutdown: [{\"intent\": \"shutdown\", \"args\": {}}]\n"
     "- create_folder: [{\"intent\": \"create_folder\", \"args\": {\"name\": \"Photos\", \"location\": \"desktop\"}}]\n"
     "- set_reminder: [{\"intent\": \"set_reminder\", \"args\": {\"minutes\": 10, \"seconds\": 0, \"task\": \"meeting\"}}]\n"
     "- list_reminders: [{\"intent\": \"list_reminders\", \"args\": {}}]\n"
     "- cancel_reminder: [{\"intent\": \"cancel_reminder\", \"args\": {\"task\": \"meeting\"}}]\n"
     "- read_clipboard: [{\"intent\": \"read_clipboard\", \"args\": {}}]\n"
+    "- write_clipboard: [{\"intent\": \"write_clipboard\", \"args\": {\"text\": \"some text\"}}]\n"
     "- send_whatsapp_message: [{\"intent\": \"send_whatsapp_message\", \"args\": {\"contact\": \"mummy\", \"message\": \"hey\"}}]\n"
     "- ask_llm: [{\"intent\": \"ask_llm\", \"args\": {\"query\": \"who is Elon Musk\"}}]\n"
     "- chat_response: [{\"intent\": \"chat_response\", \"args\": {\"message\": \"Elon Musk is ...\"}}]\n"
@@ -271,6 +312,7 @@ _LLM_SYSTEM_PROMPT = (
     "If the user says 'in 2 hours', set minutes=120. "
     "If the user asks who/what/where/when/why/how about a person, place, or concept, return ask_llm. "
     "If the user wants to create or make a new folder, return create_folder. "
+    "If the user wants to pause, play, next, or previous track, return the matching media intent. "
     "If you cannot map to a known command, return [{\"intent\": \"unknown\", \"args\": {}}]."
 )
 
